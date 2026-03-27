@@ -1,0 +1,11 @@
+LLM_Smashdown
+|____ results/
+|____ |____ student_model_4.pt
+|____ |____ student_model_5.pt
+|____ |____ student_model_6.pt
+|____ |____ student_model_7.pt
+|____ |____ student_model_8.pt
+|____ LLM_smashdown.py
+|____ EDA.ipynb
+
+
