@@ -26,3 +26,5 @@ for i, tok in enumerate(lp.content):
     if tok.top_logprobs:
         alts = ", ".join([f"{a.token}:{a.logprob:.2f}" for a in tok.top_logprobs])
         print("    top:", alts)
+
+# Test
