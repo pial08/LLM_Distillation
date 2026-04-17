@@ -1,0 +1,354 @@
+import logging
+import pandas as pd
+import torch
+from torch.utils.data import Dataset, DataLoader
+from datasets import load_dataset
+import json
+import os
+import random
+import torch
+from torch.optim import AdamW
+from torch.utils.data import DataLoader
+from torch.utils.data import random_split
+from dotenv import load_dotenv
+import tiktoken
+
+import pandas as pd
+import matplotlib.pyplot as plt
+from openai import OpenAI
+
+
+from datasets import load_dataset, Dataset, DatasetDict
+from transformers import (
+    AutoConfig,
+    AutoTokenizer,
+    AutoModelForCausalLM,
+)
+from trl import SFTTrainer, SFTConfig
+import openai
+
+
+def get_tokenizer_for_openai_model(model_name: str):
+    try:
+        return tiktoken.encoding_for_model(model_name)
+    except KeyError:
+        print(f"Warning: {model_name} not found in tiktoken model map. Using o200k_base.")
+        return tiktoken.get_encoding("o200k_base")
+
+def load_config(config_path):
+    """Loads configuration parameters from a JSON file."""
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    return config
+
+
+class TeacherDistillationDataset(torch.utils.data.Dataset):
+    def __init__(self, samples):
+        self.samples = samples
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        item = self.samples[idx]
+        return {
+            "input_ids": torch.tensor(item["input_ids"], dtype=torch.long),
+            "attention_mask": torch.tensor(item["attention_mask"], dtype=torch.long),
+            "labels": torch.tensor(item["labels"], dtype=torch.long),
+        }
+
+def load_teacher_model_and_tokenizer(model_name: str, device: torch.device, use_fp16: bool = True):
+    """
+    Loads teacher tokenizer and model for LLaMA/Mistral-style decoder-only models.
+    """
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+
+    # LLaMA/Mistral models often do not define a pad token.
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    dtype = torch.float16 if use_fp16 and torch.cuda.is_available() else torch.float32
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        torch_dtype=dtype
+    )
+    model.to(device)
+    model.eval()
+
+    return model, tokenizer
+
+
+
+def build_token_windows_from_wikitext(
+    tokenizer,
+    split: str = "train",
+    input_token_length: int = 128,
+    stride: int = 128,
+    max_samples: int = None,
+):
+    """
+    Converts WikiText into fixed token windows.
+
+    Each sample is a fixed window of input_token_length tokens.
+    """
+    dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split=split)
+
+    text_list = [x["text"].strip() for x in dataset if x["text"] and x["text"].strip()]
+    full_text = "\n\n".join(text_list)
+
+    token_ids = tokenizer(
+        full_text,
+        add_special_tokens=False,
+        return_attention_mask=False
+    )["input_ids"]
+
+    windows = []
+    for start in range(0, len(token_ids) - input_token_length, stride):
+        window_ids = token_ids[start:start + input_token_length]
+        if len(window_ids) < input_token_length:
+            continue
+
+        windows.append(window_ids)
+
+        if max_samples is not None and len(windows) >= max_samples:
+            break
+
+    return windows
+
+
+@torch.no_grad()
+def generate_teacher_outputs_for_sft(
+    teacher_model,
+    teacher_tokenizer,
+    device: torch.device,
+    input_token_length: int = 128,
+    output_max_new_tokens: int = 64,
+    source_split: str = "train",
+    source_stride: int = 128,
+    max_samples: int = 1000,
+    batch_size: int = 2,
+):
+    """
+    Generates teacher outputs for SFTTrainer.
+
+    Output format:
+    returns a Hugging Face Dataset with columns:
+      - prompt
+      - completion
+      - prompt_text
+      - target_text
+      - text
+
+    The 'prompt' and 'completion' columns are the most useful for SFTTrainer.
+    """
+    teacher_model.eval()
+
+    if teacher_tokenizer.pad_token is None:
+        teacher_tokenizer.pad_token = teacher_tokenizer.eos_token
+
+    token_windows = build_token_windows_from_wikitext(
+        tokenizer=teacher_tokenizer,
+        split=source_split,
+        input_token_length=input_token_length,
+        stride=source_stride,
+        max_samples=max_samples,
+    )
+    print("Printing wondows ...")
+    print(token_windows)
+
+    rows = []
+
+    for start_idx in range(0, len(token_windows), batch_size):
+        batch_windows = token_windows[start_idx:start_idx + batch_size]
+
+        batch_input_ids = torch.tensor(batch_windows, dtype=torch.long, device=device)
+        batch_attention_mask = torch.ones_like(batch_input_ids, device=device)
+
+        generated_ids = teacher_model.generate(
+            input_ids=batch_input_ids,
+            attention_mask=batch_attention_mask,
+            max_new_tokens=output_max_new_tokens,
+            do_sample=False,
+            pad_token_id=teacher_tokenizer.pad_token_id,
+            eos_token_id=teacher_tokenizer.eos_token_id,
+        )
+
+        for i, prompt_ids in enumerate(batch_windows):
+            full_generated_ids = generated_ids[i].tolist()
+            continuation_ids = full_generated_ids[len(prompt_ids):]
+
+            if len(continuation_ids) == 0:
+                continue
+
+            prompt_text = teacher_tokenizer.decode(
+                prompt_ids,
+                skip_special_tokens=True
+            ).strip()
+
+            target_text = teacher_tokenizer.decode(
+                continuation_ids,
+                skip_special_tokens=True
+            ).strip()
+
+            if not prompt_text or not target_text:
+                continue
+
+            prompt = prompt_text
+            completion = target_text
+            text = prompt + completion
+
+            rows.append({
+                "prompt": prompt,
+                "completion": completion,
+                # "prompt_text": prompt_text,
+                # "target_text": target_text,
+                # "text": text,
+            })
+
+        print(f"Teacher generation done for {min(start_idx + batch_size, len(token_windows))}/{len(token_windows)} samples")
+
+    return Dataset.from_list(rows)
+
+
+def generate_GPT_outputs_for_sft(
+    device: torch.device,
+    input_token_length: int = 64,
+    output_max_new_tokens: int = 256,
+    source_split: str = "train",
+    source_stride: int = 128,
+    max_samples: int = 1000,
+    batch_size: int = 2,
+):
+    
+    load_dotenv()  
+    dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
+    dataset = dataset.shuffle(seed=42)    
+    api_key = os.getenv('OPENAI_API_KEY')
+    print(api_key)
+    rows = []
+    client = OpenAI(api_key=api_key)  # reads OPENAI_API_KEY from environment
+
+    # Read one row by index
+    # row_idx = 5
+    # row = dataset[row_idx]
+
+    # print(f"Row {row_idx}:")
+    # print(row)
+    # print("\nText:")
+    # print(row["text"])
+    
+    counter = 0
+    for i in range(max_samples):
+        row_text = dataset[i]["text"]
+        print(f"===================Inserting item no. {counter + 1}===============================")
+        input_token_length = (int)(len(row_text.split(" ")) * 0.25)
+        #print("Printing total and input token length *** ", len(row_text.split(" ")), input_token_length)
+        if row_text == "" or len(row_text.split(" ")) <= input_token_length:
+            continue
+        else:
+            #print("Full text", row_text.split(" "))
+            prompt = " ".join(row_text.split(" ")[:input_token_length])
+            #prompt = row_text[: input_token_length]
+
+            print("Printing prompt", prompt)
+            
+            response = client.responses.create(
+                model="gpt-5.4-nano",
+                input=f"Continue the following text naturally. Do not generate extra wordings. Directly generate an elaborate continuation. Only print the contunuation, not the prompt.\n\n{prompt}",
+                max_output_tokens=output_max_new_tokens,
+)
+            completion = response.output_text
+            #print("generated_text", completion)
+
+            rows.append({
+                "prompt": prompt,
+                "completion": completion,
+                # "prompt_text": prompt_text,
+                # "target_text": target_text,
+                # "text": text,
+            })
+
+            #print("Printing final content ...")
+            #print(rows[counter])
+            counter += 1
+
+    return Dataset.from_list(rows)
+
+config = load_config("config_sft.json")
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# teacher_model, teacher_tokenizer = load_teacher_model_and_tokenizer(
+#     model_name=config["teacher_model_name"],
+#     device=device,
+#     use_fp16=config.get("use_fp16", True)
+# )
+
+# Step 4: create and train student
+# student_model, student_tokenizer = create_student_model(
+#     student_config=config["student_model"],
+#     device=device,
+#     )
+
+
+
+# teacher_dataset = generate_teacher_outputs_for_sft(
+#     teacher_model=teacher_model,
+#     teacher_tokenizer=teacher_tokenizer,
+#     device=device,
+#     input_token_length=128,
+#     output_max_new_tokens=256,
+#     source_split="train",
+#     source_stride=128,
+#     max_samples=5,
+#     batch_size=8,
+# )
+
+
+teacher_dataset = generate_GPT_outputs_for_sft(
+    device=device,
+    input_token_length=64,
+    output_max_new_tokens=256,
+    source_split="train",
+    source_stride=128,
+    max_samples=1500,
+    batch_size=8,
+)
+
+
+# sft_config = SFTConfig(
+#     output_dir=config.get("result_dir"),
+#     per_device_train_batch_size=config.get("per_device_train_batch_size"),
+#     per_device_eval_batch_size=config.get("per_device_eval_batch_size"),
+#     learning_rate=config.get("learning_rate"),
+#     num_train_epochs=config.get("num_epochs"),
+#     logging_steps=10,
+#     eval_strategy="epoch",
+#     save_strategy="epoch",
+#     save_total_limit=2,
+#     max_length=config.get("output_max_new_tokens"),
+#     gradient_accumulation_steps=4,
+#     warmup_ratio=0.03,
+#     lr_scheduler_type="cosine",
+#     bf16=torch.cuda.is_available(),
+#     fp16=False,
+#     report_to="none",
+# )
+
+
+split_1 = teacher_dataset.train_test_split(test_size=0.2, seed=42)
+train_dataset = split_1["train"]
+temp_dataset = split_1["test"]
+
+split_2 = temp_dataset.train_test_split(test_size=0.5, seed=42)
+val_dataset = split_2["train"]
+test_dataset = split_2["test"]
+
+
+train_dataset.save_to_disk("Datasets/distill_data/train")
+val_dataset.save_to_disk("Datasets/distill_data/val")
+test_dataset.save_to_disk("Datasets/distill_data/test")
+
+
+

@@ -1,2 +1,4 @@
 saved_models/
 NMBU/
+environment_setup.sh
+.env

@@ -19,7 +19,7 @@ from sentence_transformers import SentenceTransformer, util
 from datasets import load_dataset
 import pandas as pd
 
-
+#  test on squad dataset, and wikitext dataset
 
 import os
 import time
