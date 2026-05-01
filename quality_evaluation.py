@@ -3,7 +3,7 @@ import torch
 
 # meta-llama/Llama-3.2-3B
 # distilgpt2
-saved_model = "saved_models/student_model_student_layers"
+saved_model = "saved_models/TestLLaMa-v1.0"
 original_model = "meta-llama/Llama-3.2-3B"
 
 student_model = AutoModelForCausalLM.from_pretrained(saved_model)

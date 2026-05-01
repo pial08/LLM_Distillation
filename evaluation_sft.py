@@ -30,6 +30,7 @@ def load_trained_model(model_dir: str, device: torch.device):
     return model, tokenizer
 
 
+
 def load_test_dataset(test_dataset_path: str):
     """
     Load a Hugging Face dataset split saved with save_to_disk().
@@ -38,8 +39,19 @@ def load_test_dataset(test_dataset_path: str):
       - prompt_text
       - target_text
     """
-    dataset = load_from_disk(test_dataset_path)
-    return dataset
+
+    # Returning test dataset only
+    dataset = load_from_disk("Datasets/distill_data/train")
+    splits = dataset.train_test_split(test_size=0.2, seed=42)
+    train_dataset = splits["train"]
+    temp_dataset = splits["test"]
+    val_test = temp_dataset.train_test_split(test_size=0.5, seed=42)
+    val_dataset = val_test["train"]
+    test_dataset = val_test["test"]
+    return test_dataset
+
+    # dataset = load_from_disk(test_dataset_path)
+    # return dataset
 
 
 def build_prompt(prompt_text: str) -> str:
@@ -82,7 +94,6 @@ def generate_response(
     generated_text = tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
 
     return generated_text
-
 
 def compute_cosine_similarity(
     embedder,
@@ -129,7 +140,21 @@ def evaluate_model(
     model, tokenizer = load_trained_model(model_dir, device)
 
     # 2) Load test dataset
+    #Original Test Dataset
     test_dataset = load_test_dataset(test_dataset_path)
+
+    ### (Split training)
+
+    # dataset = load_from_disk("Datasets/distill_data/train")
+
+    # splits = dataset.train_test_split(test_size=0.2, seed=42)
+    # train_dataset = splits["train"]
+    # temp_dataset = splits["test"]
+    # val_test = temp_dataset.train_test_split(test_size=0.5, seed=42)
+    # val_dataset = val_test["train"]
+    # test_dataset = val_test["test"]
+
+    ###
 
     bleu_metric = evaluate.load("bleu")
     rouge_metric = evaluate.load("rouge")
@@ -164,6 +189,10 @@ def evaluate_model(
     rougeL_scores = []
 
     for pred, ref in zip(predictions, references):
+        #print("Reference ...", references)
+        if not pred or not ref:
+            print("Skipping ... ", pred, ref)
+            continue
         bleu_result = bleu_metric.compute(
             predictions=[pred],
             references=[[ref]],
@@ -225,7 +254,7 @@ def evaluate_model(
 
 
 if __name__ == "__main__":
-    MODEL_DIR = "saved_models/final_model_sft"
+    MODEL_DIR = "saved_models/TestLLaMa-v1.0"
     TEST_DATASET_PATH = "Datasets/distill_data/train"
 
     evaluate_model(
@@ -235,3 +264,7 @@ if __name__ == "__main__":
         max_new_tokens=256,
         save_predictions_path="saved_models/eval_predictions.json",
     )
+
+    # saved_models/final_model_sft
+
+    #saved_models/TestLLaMa-v1.0

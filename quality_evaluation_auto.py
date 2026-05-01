@@ -36,6 +36,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, GPT2Config, GPT2LM
 from transformers import LlamaConfig, LlamaForCausalLM
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
+
 # ================== Teacher-Student Evaluation Add-On ==================
 
 
@@ -201,8 +202,13 @@ logging.info("Starting inference on GPU" if torch.cuda.is_available() else "Star
 result_dir = "eval_results"
 
 
-student_model_name = "saved_models/student_model_student_layers"
+student_model_name = "saved_models/TestLLaMa-v1.0"
 teacher_model_name = "meta-llama/Llama-3.2-3B"
+
+# ./gkd_out/RL_Distil_1.2
+# saved_models/student_model_student_layers
+# saved_models/TestLLaMa-v1.0
+
 
 student_model = AutoModelForCausalLM.from_pretrained(student_model_name).to(device)
 teacher_model = AutoModelForCausalLM.from_pretrained(teacher_model_name).to(device)
@@ -212,4 +218,4 @@ if tokenizer.pad_token is None:
 teacher_model.eval()
 
 
-evaluate_and_save(student_model, teacher_model, tokenizer, device, result_dir, num_samples=1000)
+evaluate_and_save(student_model, teacher_model, tokenizer, device, result_dir, num_samples=50)

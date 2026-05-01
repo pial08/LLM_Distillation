@@ -10,6 +10,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
 from datasets import load_from_disk
+from trl.experimental.gkd import GKDTrainer, GKDConfig
 
 from peft import LoraConfig
 
@@ -365,25 +366,31 @@ val_test = temp_dataset.train_test_split(test_size=0.5, seed=42)
 val_dataset = val_test["train"]
 test_dataset = val_test["test"]
 
+
+from datasets import Dataset
+
+def to_messages(example):
+    return {
+        "messages": [
+            {"role": "user", "content": example["prompt"]},
+            {"role": "assistant", "content": example["completion"]},
+        ]
+    }
+
+train_dataset = train_dataset.map(to_messages, remove_columns=train_dataset.column_names)
+val_dataset = val_dataset.map(to_messages, remove_columns=val_dataset.column_names)
+
 # Original student model: meta-llama/Llama-3.2-1B-Instruct
 
 
-lora_config = LoraConfig(
-    r=16,
-    lora_alpha=32,
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-    lora_dropout=0.05,
-    bias="none",
-    task_type="CAUSAL_LM",
-)
-
-trainer = SFTTrainer(
-    model=student_model,
-    args=sft_config,
-    train_dataset=train_dataset,
-    eval_dataset=val_dataset,
-    processing_class=student_tokenizer,
-)
+# lora_config = LoraConfig(
+#     r=16,
+#     lora_alpha=32,
+#     target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+#     lora_dropout=0.05,
+#     bias="none",
+#     task_type="CAUSAL_LM",
+# )
 
 # trainer = SFTTrainer(
 #     model=student_model,
@@ -391,10 +398,44 @@ trainer = SFTTrainer(
 #     train_dataset=train_dataset,
 #     eval_dataset=val_dataset,
 #     processing_class=student_tokenizer,
-#     peft_config=lora_config,   # add this
 # )
 
+
+
+# from trl.experimental.gkd import GKDTrainer, GKDConfig
+
+gkd_config = GKDConfig(
+    output_dir="./gkd_out/RL_Distil_1.2",
+    per_device_train_batch_size=2,
+    per_device_eval_batch_size=2,
+    learning_rate=1e-5,
+    num_train_epochs=3,
+    temperature=0.8,      # sampling temperature
+    max_new_tokens=256,
+    #lmbda=0.5,            # on-policy student fraction
+    beta=0.5,             # GJS interpolation parameter
+    logging_steps=10,
+    eval_strategy="steps",
+    eval_steps=100,
+    save_steps=100,
+    bf16=True,
+    fp16=False,
+)
+
+# bf16=True
+#fp16=False
+
+trainer = GKDTrainer(
+    model=student_model,
+    teacher_model="meta-llama/Llama-3.2-3B",
+    args=gkd_config,
+    train_dataset=train_dataset,
+    eval_dataset=val_dataset,
+    processing_class=student_tokenizer,
+)
+
 trainer.train()
+
 
 
 # eval_metrics = trainer.evaluate(test_dataset)

@@ -44,6 +44,7 @@ import pandas as pd
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, GPT2Config, GPT2LMHeadModel
 from transformers import LlamaConfig, LlamaForCausalLM
+from datasets import load_from_disk
 
 
 def setup_logging(result_dir):
@@ -65,16 +66,70 @@ def load_config(config_path):
         config = json.load(f)
     return config
 
+# def prepare_dataset(tokenizer, max_length):
+#     """Loads and tokenizes the wikitext dataset."""
+#     #dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
+#     dataset = load_dataset(
+#         "wikitext",
+#         "wikitext-2-raw-v1",
+#         split="train[:5000]"
+#     )
+    
+#     def tokenize_function(examples):
+#         return tokenizer(examples["text"], truncation=True, padding="max_length", max_length=max_length)
+    
+#     tokenized_dataset = dataset.map(tokenize_function, batched=True)
+#     tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
+#     return tokenized_dataset
+
+
 def prepare_dataset(tokenizer, max_length):
-    """Loads and tokenizes the wikitext dataset."""
-    dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
-    
+    """Loads dataset from disk, splits it, and tokenizes train/val/test."""
+
+    TEST_DATASET_PATH = "Datasets/distill_data/train"
+    dataset = load_from_disk(TEST_DATASET_PATH)
+
+    # 80% train, 10% validation, 10% test
+    splits = dataset.train_test_split(test_size=0.06, seed=42)
+
+    train_dataset = splits["train"]
+    # temp_dataset = splits["test"]
+
+    # print("Printing training dataset", train_dataset)
+    # val_test = temp_dataset.train_test_split(test_size=0.5, seed=42)
+
+    # val_dataset = val_test["train"]
+    # test_dataset = val_test["test"]
+
     def tokenize_function(examples):
-        return tokenizer(examples["text"], truncation=True, padding="max_length", max_length=max_length)
-    
-    tokenized_dataset = dataset.map(tokenize_function, batched=True)
-    tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
-    return tokenized_dataset
+        texts = [
+            f"{prompt}\n{completion}"
+            for prompt, completion in zip(examples["prompt"], examples["completion"])
+        ]
+
+        tokenized = tokenizer(
+            texts,
+            truncation=True,
+            padding="max_length",
+            max_length=max_length,
+        )
+
+        tokenized["labels"] = tokenized["input_ids"].copy()
+        return tokenized
+
+    train_dataset = train_dataset.map(tokenize_function, batched=True)
+    # val_dataset = val_dataset.map(tokenize_function, batched=True)
+    # test_dataset = test_dataset.map(tokenize_function, batched=True)
+
+    columns = ["input_ids", "attention_mask"]
+
+    train_dataset.set_format(type="torch", columns=columns)
+    # val_dataset.set_format(type="torch", columns=columns)
+    # test_dataset.set_format(type="torch", columns=columns)
+
+    #return train_dataset, val_dataset, test_dataset
+    return train_dataset
+
 
 def create_student_model(teacher_model, tokenizer, student_layers: int, max_positions: int = 2048):
     """
@@ -302,8 +357,10 @@ def main():
         csv_filename = os.path.join(result_dir, f"student_layer_{student_layers}.csv")
         save_csv(loss_dict, csv_filename)
         logging.info(f"Finished training student model with {student_layers} layers. CSV saved to {csv_filename}.")
+        
         # Saving the model
-        save_dir = "saved_models/student_model_" + "student_layers"
+        #save_dir = "saved_models/student_model_" + "student_layers"
+        save_dir = "saved_models/TestLLaMa-v1.0"
         student_model.save_pretrained(save_dir)
         tokenizer.save_pretrained(save_dir)
     
