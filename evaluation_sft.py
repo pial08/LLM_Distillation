@@ -6,9 +6,66 @@ from typing import Dict, List
 import torch
 import evaluate
 from datasets import load_from_disk
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from sentence_transformers import SentenceTransformer
 import torch.nn.functional as F
+
+
+def setup_logging(result_dir):
+    """Configures logging to output both to file and console."""
+    log_file = os.path.join(result_dir, "training_log.txt")
+    logging.basicConfig(level=logging.INFO,
+                        filename=log_file,
+                        filemode="w",
+                        format="%(asctime)s - %(levelname)s - %(message)s")
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    console.setFormatter(formatter)
+    logging.getLogger("").addHandler(console)
+
+
+def get_torch_dtype(dtype_name: str | None):
+    if dtype_name is None:
+        return None
+    mapping = {
+        "float16": torch.float16,
+        "fp16": torch.float16,
+        "bfloat16": torch.bfloat16,
+        "bf16": torch.bfloat16,
+        "float32": torch.float32,
+        "fp32": torch.float32,
+    }
+    key = dtype_name.lower()
+    if key not in mapping:
+        raise ValueError(f"Unsupported dtype in config: {dtype_name}")
+    return mapping[key]
+
+def build_bnb_config(qcfg: dict | None):
+    if not qcfg or not qcfg.get("enabled", False):
+        return None
+
+    mode = qcfg.get("mode", "").lower()
+
+    if mode == "8bit":
+        return BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_threshold=qcfg.get("llm_int8_threshold", 6.0),
+            llm_int8_enable_fp32_cpu_offload=qcfg.get("llm_int8_enable_fp32_cpu_offload", False),
+            llm_int8_skip_modules=qcfg.get("llm_int8_skip_modules"),
+        )
+
+    if mode == "4bit":
+        compute_dtype = get_torch_dtype(qcfg.get("bnb_4bit_compute_dtype", "bfloat16"))
+        return BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type=qcfg.get("bnb_4bit_quant_type", "nf4"),
+            bnb_4bit_use_double_quant=qcfg.get("bnb_4bit_use_double_quant", True),
+            bnb_4bit_compute_dtype=compute_dtype,
+        )
+
+    raise ValueError(f"Unsupported quantization mode: {mode}")
+
 
 
 def load_trained_model(model_dir: str, device: torch.device):

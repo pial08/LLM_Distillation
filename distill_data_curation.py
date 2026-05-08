@@ -279,11 +279,11 @@ config = load_config("config_sft.json")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# teacher_model, teacher_tokenizer = load_teacher_model_and_tokenizer(
-#     model_name=config["teacher_model_name"],
-#     device=device,
-#     use_fp16=config.get("use_fp16", True)
-# )
+teacher_model, teacher_tokenizer = load_teacher_model_and_tokenizer(
+    model_name=config["teacher_model_name"],
+    device=device,
+    use_fp16=config.get("use_fp16", True)
+)
 
 # Step 4: create and train student
 # student_model, student_tokenizer = create_student_model(
@@ -293,48 +293,30 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 
-# teacher_dataset = generate_teacher_outputs_for_sft(
-#     teacher_model=teacher_model,
-#     teacher_tokenizer=teacher_tokenizer,
-#     device=device,
-#     input_token_length=128,
-#     output_max_new_tokens=256,
-#     source_split="train",
-#     source_stride=128,
-#     max_samples=5,
-#     batch_size=8,
-# )
-
-
-teacher_dataset = generate_GPT_outputs_for_sft(
+teacher_dataset = generate_teacher_outputs_for_sft(
+    teacher_model=teacher_model,
+    teacher_tokenizer=teacher_tokenizer,
     device=device,
-    input_token_length=64,
+    input_token_length=128,
     output_max_new_tokens=256,
     source_split="train",
     source_stride=128,
-    max_samples=1500,
+    max_samples=5,
     batch_size=8,
 )
 
 
-# sft_config = SFTConfig(
-#     output_dir=config.get("result_dir"),
-#     per_device_train_batch_size=config.get("per_device_train_batch_size"),
-#     per_device_eval_batch_size=config.get("per_device_eval_batch_size"),
-#     learning_rate=config.get("learning_rate"),
-#     num_train_epochs=config.get("num_epochs"),
-#     logging_steps=10,
-#     eval_strategy="epoch",
-#     save_strategy="epoch",
-#     save_total_limit=2,
-#     max_length=config.get("output_max_new_tokens"),
-#     gradient_accumulation_steps=4,
-#     warmup_ratio=0.03,
-#     lr_scheduler_type="cosine",
-#     bf16=torch.cuda.is_available(),
-#     fp16=False,
-#     report_to="none",
+# teacher_dataset = generate_GPT_outputs_for_sft(
+#     device=device,
+#     input_token_length=64,
+#     output_max_new_tokens=256,
+#     source_split="train",
+#     source_stride=128,
+#     max_samples=1500,
+#     batch_size=8,
 # )
+
+
 
 
 split_1 = teacher_dataset.train_test_split(test_size=0.2, seed=42)
@@ -346,9 +328,9 @@ val_dataset = split_2["train"]
 test_dataset = split_2["test"]
 
 
-train_dataset.save_to_disk("Datasets/distill_data/train")
-val_dataset.save_to_disk("Datasets/distill_data/val")
-test_dataset.save_to_disk("Datasets/distill_data/test")
+train_dataset.save_to_disk("Datasets/distill_data_sft/train")
+val_dataset.save_to_disk("Datasets/distill_data_sft/val")
+test_dataset.save_to_disk("Datasets/distill_data_sft/test")
 
 
 

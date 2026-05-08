@@ -1,87 +1,80 @@
-2026-04-30 13:01:30,817 - INFO - Starting training on GPU
-2026-04-30 13:01:36,995 - INFO - Teacher model: meta-llama/Llama-3.2-3B | Transformer blocks: 28
-2026-04-30 13:01:37,163 - INFO - ----- Training Student Model with 4 Transformer Blocks -----
-2026-04-30 13:02:28,755 - INFO - Epoch 1/20 completed in 39.14 sec | Avg Distill Loss: 506.6055 | Avg CE Loss: 9.2132
-2026-04-30 13:02:32,233 - INFO - Epoch 2/20, Global Step 100, Distill Loss: 471.4567, CE Loss: 9.7058
-2026-04-30 13:03:08,604 - INFO - Epoch 2/20 completed in 39.85 sec | Avg Distill Loss: 352.4206 | Avg CE Loss: 9.6811
-2026-04-30 13:03:15,592 - INFO - Epoch 3/20, Global Step 200, Distill Loss: 337.7184, CE Loss: 9.9013
-2026-04-30 13:03:48,575 - INFO - Epoch 3/20 completed in 39.97 sec | Avg Distill Loss: 294.4645 | Avg CE Loss: 9.9964
-2026-04-30 13:03:59,081 - INFO - Epoch 4/20, Global Step 300, Distill Loss: 201.1931, CE Loss: 10.2759
-2026-04-30 13:04:28,906 - INFO - Epoch 4/20 completed in 40.33 sec | Avg Distill Loss: 249.1506 | Avg CE Loss: 10.2074
-2026-04-30 13:04:42,872 - INFO - Epoch 5/20, Global Step 400, Distill Loss: 189.9100, CE Loss: 10.1839
-2026-04-30 13:05:08,993 - INFO - Epoch 5/20 completed in 40.09 sec | Avg Distill Loss: 215.4224 | Avg CE Loss: 10.3156
-2026-04-30 13:05:26,556 - INFO - Epoch 6/20, Global Step 500, Distill Loss: 116.6578, CE Loss: 10.0048
-2026-04-30 13:05:49,098 - INFO - Epoch 6/20 completed in 40.11 sec | Avg Distill Loss: 192.8147 | Avg CE Loss: 10.4196
-2026-04-30 13:06:10,084 - INFO - Epoch 7/20, Global Step 600, Distill Loss: 180.6937, CE Loss: 10.4423
-2026-04-30 13:06:29,108 - INFO - Epoch 7/20 completed in 40.01 sec | Avg Distill Loss: 174.1241 | Avg CE Loss: 10.4828
-2026-04-30 13:06:53,901 - INFO - Epoch 8/20, Global Step 700, Distill Loss: 178.8557, CE Loss: 10.9137
-2026-04-30 13:07:09,501 - INFO - Epoch 8/20 completed in 40.39 sec | Avg Distill Loss: 157.6002 | Avg CE Loss: 10.5523
-2026-04-30 13:07:37,574 - INFO - Epoch 9/20, Global Step 800, Distill Loss: 132.6972, CE Loss: 10.6321
-2026-04-30 13:07:49,595 - INFO - Epoch 9/20 completed in 40.09 sec | Avg Distill Loss: 145.6614 | Avg CE Loss: 10.6299
-2026-04-30 13:08:21,098 - INFO - Epoch 10/20, Global Step 900, Distill Loss: 119.6829, CE Loss: 10.2474
-2026-04-30 13:08:29,628 - INFO - Epoch 10/20 completed in 40.03 sec | Avg Distill Loss: 133.9870 | Avg CE Loss: 10.6549
-2026-04-30 13:09:04,952 - INFO - Epoch 11/20, Global Step 1000, Distill Loss: 121.9080, CE Loss: 10.3245
-2026-04-30 13:09:10,028 - INFO - Epoch 11/20 completed in 40.40 sec | Avg Distill Loss: 125.5442 | Avg CE Loss: 10.6752
-2026-04-30 13:09:48,619 - INFO - Epoch 12/20, Global Step 1100, Distill Loss: 133.9769, CE Loss: 10.7575
-2026-04-30 13:09:50,145 - INFO - Epoch 12/20 completed in 40.12 sec | Avg Distill Loss: 119.5010 | Avg CE Loss: 10.7222
-2026-04-30 13:10:30,211 - INFO - Epoch 13/20 completed in 40.07 sec | Avg Distill Loss: 113.0942 | Avg CE Loss: 10.7300
-2026-04-30 13:10:31,960 - INFO - Epoch 14/20, Global Step 1200, Distill Loss: 145.6407, CE Loss: 11.0224
-2026-04-30 13:11:10,587 - INFO - Epoch 14/20 completed in 40.38 sec | Avg Distill Loss: 108.5099 | Avg CE Loss: 10.7667
-2026-04-30 13:11:15,858 - INFO - Epoch 15/20, Global Step 1300, Distill Loss: 99.0970, CE Loss: 11.2695
-2026-04-30 13:11:50,864 - INFO - Epoch 15/20 completed in 40.28 sec | Avg Distill Loss: 104.6007 | Avg CE Loss: 10.7968
-2026-04-30 13:11:59,637 - INFO - Epoch 16/20, Global Step 1400, Distill Loss: 98.9049, CE Loss: 10.6694
-2026-04-30 13:12:30,997 - INFO - Epoch 16/20 completed in 40.13 sec | Avg Distill Loss: 99.8540 | Avg CE Loss: 10.7874
-2026-04-30 13:12:43,267 - INFO - Epoch 17/20, Global Step 1500, Distill Loss: 58.9802, CE Loss: 10.4052
-2026-04-30 13:13:11,422 - INFO - Epoch 17/20 completed in 40.42 sec | Avg Distill Loss: 95.0772 | Avg CE Loss: 10.7934
-2026-04-30 13:13:27,222 - INFO - Epoch 18/20, Global Step 1600, Distill Loss: 81.1127, CE Loss: 10.6623
-2026-04-30 13:13:51,712 - INFO - Epoch 18/20 completed in 40.29 sec | Avg Distill Loss: 92.3011 | Avg CE Loss: 10.8293
-2026-04-30 13:14:11,021 - INFO - Epoch 19/20, Global Step 1700, Distill Loss: 82.5107, CE Loss: 11.1050
-2026-04-30 13:14:31,845 - INFO - Epoch 19/20 completed in 40.13 sec | Avg Distill Loss: 89.7521 | Avg CE Loss: 10.8214
-2026-04-30 13:14:54,633 - INFO - Epoch 20/20, Global Step 1800, Distill Loss: 84.2604, CE Loss: 11.0185
-2026-04-30 13:15:12,228 - INFO - Epoch 20/20 completed in 40.38 sec | Avg Distill Loss: 87.3692 | Avg CE Loss: 10.8360
-2026-04-30 13:15:12,243 - INFO - Finished training student model with 4 layers. CSV saved to results/student_layer_4.csv.
-2026-04-30 13:16:02,617 - INFO - ----- Training Student Model with 5 Transformer Blocks -----
-2026-04-30 13:16:58,805 - INFO - Epoch 1/20 completed in 42.72 sec | Avg Distill Loss: 513.2440 | Avg CE Loss: 9.3172
-2026-04-30 13:17:02,550 - INFO - Epoch 2/20, Global Step 100, Distill Loss: 317.3985, CE Loss: 9.4751
-2026-04-30 13:17:41,753 - INFO - Epoch 2/20 completed in 42.95 sec | Avg Distill Loss: 357.3910 | Avg CE Loss: 9.6868
-2026-04-30 13:17:49,264 - INFO - Epoch 3/20, Global Step 200, Distill Loss: 276.8673, CE Loss: 9.1360
-2026-04-30 13:18:24,743 - INFO - Epoch 3/20 completed in 42.99 sec | Avg Distill Loss: 300.2572 | Avg CE Loss: 9.9757
-2026-04-30 13:18:36,302 - INFO - Epoch 4/20, Global Step 300, Distill Loss: 221.7044, CE Loss: 9.9306
-2026-04-30 13:19:08,109 - INFO - Epoch 4/20 completed in 43.37 sec | Avg Distill Loss: 250.6147 | Avg CE Loss: 10.1744
-2026-04-30 13:19:23,258 - INFO - Epoch 5/20, Global Step 400, Distill Loss: 206.5905, CE Loss: 9.7246
-2026-04-30 13:19:51,172 - INFO - Epoch 5/20 completed in 43.06 sec | Avg Distill Loss: 216.7583 | Avg CE Loss: 10.3226
-2026-04-30 13:20:09,961 - INFO - Epoch 6/20, Global Step 500, Distill Loss: 178.7869, CE Loss: 10.2412
-2026-04-30 13:20:34,167 - INFO - Epoch 6/20 completed in 42.99 sec | Avg Distill Loss: 193.5537 | Avg CE Loss: 10.4139
-2026-04-30 13:20:56,924 - INFO - Epoch 7/20, Global Step 600, Distill Loss: 183.1351, CE Loss: 10.8427
-2026-04-30 13:21:17,276 - INFO - Epoch 7/20 completed in 43.11 sec | Avg Distill Loss: 172.7467 | Avg CE Loss: 10.5000
-2026-04-30 13:21:43,619 - INFO - Epoch 8/20, Global Step 700, Distill Loss: 137.4809, CE Loss: 10.6659
-2026-04-30 13:22:00,282 - INFO - Epoch 8/20 completed in 43.01 sec | Avg Distill Loss: 157.5524 | Avg CE Loss: 10.5571
-2026-04-30 13:22:30,270 - INFO - Epoch 9/20, Global Step 800, Distill Loss: 165.6306, CE Loss: 11.0622
-2026-04-30 13:22:43,169 - INFO - Epoch 9/20 completed in 42.89 sec | Avg Distill Loss: 145.2122 | Avg CE Loss: 10.6266
-2026-04-30 13:23:17,261 - INFO - Epoch 10/20, Global Step 900, Distill Loss: 126.0267, CE Loss: 11.1314
-2026-04-30 13:23:26,412 - INFO - Epoch 10/20 completed in 43.24 sec | Avg Distill Loss: 135.5813 | Avg CE Loss: 10.6757
-2026-04-30 13:24:04,075 - INFO - Epoch 11/20, Global Step 1000, Distill Loss: 138.3987, CE Loss: 11.0822
-2026-04-30 13:24:09,470 - INFO - Epoch 11/20 completed in 43.06 sec | Avg Distill Loss: 126.6055 | Avg CE Loss: 10.7047
-2026-04-30 13:24:50,687 - INFO - Epoch 12/20, Global Step 1100, Distill Loss: 85.8368, CE Loss: 10.7507
-2026-04-30 13:24:52,320 - INFO - Epoch 12/20 completed in 42.85 sec | Avg Distill Loss: 118.7685 | Avg CE Loss: 10.7074
-2026-04-30 13:25:35,473 - INFO - Epoch 13/20 completed in 43.15 sec | Avg Distill Loss: 111.7374 | Avg CE Loss: 10.7310
-2026-04-30 13:25:37,343 - INFO - Epoch 14/20, Global Step 1200, Distill Loss: 143.9763, CE Loss: 10.8508
-2026-04-30 13:26:18,489 - INFO - Epoch 14/20 completed in 43.02 sec | Avg Distill Loss: 106.9029 | Avg CE Loss: 10.7561
-2026-04-30 13:26:24,115 - INFO - Epoch 15/20, Global Step 1300, Distill Loss: 65.8052, CE Loss: 10.6012
-2026-04-30 13:27:01,338 - INFO - Epoch 15/20 completed in 42.85 sec | Avg Distill Loss: 102.9980 | Avg CE Loss: 10.7904
-2026-04-30 13:27:10,716 - INFO - Epoch 16/20, Global Step 1400, Distill Loss: 105.1355, CE Loss: 10.6146
-2026-04-30 13:27:44,219 - INFO - Epoch 16/20 completed in 42.88 sec | Avg Distill Loss: 98.6709 | Avg CE Loss: 10.7847
-2026-04-30 13:27:57,555 - INFO - Epoch 17/20, Global Step 1500, Distill Loss: 116.1696, CE Loss: 11.0978
-2026-04-30 13:28:27,276 - INFO - Epoch 17/20 completed in 43.05 sec | Avg Distill Loss: 95.3209 | Avg CE Loss: 10.8100
-2026-04-30 13:28:44,235 - INFO - Epoch 18/20, Global Step 1600, Distill Loss: 119.3601, CE Loss: 10.9300
-2026-04-30 13:29:10,275 - INFO - Epoch 18/20 completed in 43.00 sec | Avg Distill Loss: 90.9507 | Avg CE Loss: 10.8184
-2026-04-30 13:29:30,905 - INFO - Epoch 19/20, Global Step 1700, Distill Loss: 82.6509, CE Loss: 10.8814
-2026-04-30 13:29:53,090 - INFO - Epoch 19/20 completed in 42.82 sec | Avg Distill Loss: 87.6079 | Avg CE Loss: 10.8305
-2026-04-30 13:30:17,701 - INFO - Epoch 20/20, Global Step 1800, Distill Loss: 89.2184, CE Loss: 10.7029
-2026-04-30 13:30:36,168 - INFO - Epoch 20/20 completed in 43.08 sec | Avg Distill Loss: 84.7480 | Avg CE Loss: 10.8419
-2026-04-30 13:30:36,182 - INFO - Finished training student model with 5 layers. CSV saved to results/student_layer_5.csv.
-2026-04-30 13:30:48,357 - INFO - Generating plots for accumulated losses and training times.
-2026-04-30 13:30:48,691 - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
-2026-04-30 13:30:48,693 - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
-2026-04-30 13:30:48,757 - INFO - Plots generated successfully.
-2026-04-30 13:30:48,757 - INFO - All experiments completed successfully.
+2026-05-08 15:40:47,895 - INFO - Starting training on GPU
+2026-05-08 15:40:55,672 - INFO - We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
+2026-05-08 15:41:18,488 - INFO - Teacher model: meta-llama/Llama-3.1-8B | Transformer blocks: 32
+2026-05-08 15:41:24,026 - INFO - ----- Training Student Model with 1 Transformer Blocks -----
+2026-05-08 15:42:29,612 - INFO - Epoch 1/20, Global Step 100, Distill Loss: 1032.9777, CE Loss: 9.5288
+2026-05-08 15:43:20,699 - INFO - Epoch 1/20, Global Step 200, Distill Loss: 753.1764, CE Loss: 10.5085
+2026-05-08 15:43:46,584 - INFO - Epoch 1/20 completed in 127.95 sec | Avg Distill Loss: 904.2161 | Avg CE Loss: 9.9421
+2026-05-08 15:44:12,234 - INFO - Epoch 2/20, Global Step 300, Distill Loss: 850.6794, CE Loss: 10.0700
+2026-05-08 15:45:03,646 - INFO - Epoch 2/20, Global Step 400, Distill Loss: 512.1317, CE Loss: 10.4228
+2026-05-08 15:45:54,929 - INFO - Epoch 2/20, Global Step 500, Distill Loss: 621.0613, CE Loss: 10.2044
+2026-05-08 15:45:54,930 - INFO - Epoch 2/20 completed in 128.35 sec | Avg Distill Loss: 695.3430 | Avg CE Loss: 10.4351
+2026-05-08 15:46:46,577 - INFO - Epoch 3/20, Global Step 600, Distill Loss: 604.5957, CE Loss: 10.5884
+2026-05-08 15:47:38,111 - INFO - Epoch 3/20, Global Step 700, Distill Loss: 667.2476, CE Loss: 10.2792
+2026-05-08 15:48:03,727 - INFO - Epoch 3/20 completed in 128.80 sec | Avg Distill Loss: 597.5172 | Avg CE Loss: 10.5244
+2026-05-08 15:48:29,500 - INFO - Epoch 4/20, Global Step 800, Distill Loss: 367.0272, CE Loss: 11.1995
+2026-05-08 15:49:21,026 - INFO - Epoch 4/20, Global Step 900, Distill Loss: 375.1779, CE Loss: 10.6197
+2026-05-08 15:50:12,500 - INFO - Epoch 4/20, Global Step 1000, Distill Loss: 471.9356, CE Loss: 10.5585
+2026-05-08 15:50:12,501 - INFO - Epoch 4/20 completed in 128.77 sec | Avg Distill Loss: 515.1313 | Avg CE Loss: 10.7082
+2026-05-08 15:51:03,811 - INFO - Epoch 5/20, Global Step 1100, Distill Loss: 452.0541, CE Loss: 10.8948
+2026-05-08 15:51:55,256 - INFO - Epoch 5/20, Global Step 1200, Distill Loss: 526.6071, CE Loss: 10.8612
+2026-05-08 15:52:20,820 - INFO - Epoch 5/20 completed in 128.32 sec | Avg Distill Loss: 455.5566 | Avg CE Loss: 10.8688
+2026-05-08 15:52:46,443 - INFO - Epoch 6/20, Global Step 1300, Distill Loss: 433.7815, CE Loss: 11.0041
+2026-05-08 15:53:37,763 - INFO - Epoch 6/20, Global Step 1400, Distill Loss: 468.8228, CE Loss: 11.0757
+2026-05-08 15:54:29,269 - INFO - Epoch 6/20, Global Step 1500, Distill Loss: 384.8797, CE Loss: 10.6235
+2026-05-08 15:54:29,270 - INFO - Epoch 6/20 completed in 128.45 sec | Avg Distill Loss: 415.0342 | Avg CE Loss: 10.9734
+2026-05-08 15:55:20,521 - INFO - Epoch 7/20, Global Step 1600, Distill Loss: 305.0319, CE Loss: 10.6510
+2026-05-08 15:56:12,142 - INFO - Epoch 7/20, Global Step 1700, Distill Loss: 258.6360, CE Loss: 10.6725
+2026-05-08 15:56:37,822 - INFO - Epoch 7/20 completed in 128.55 sec | Avg Distill Loss: 384.4662 | Avg CE Loss: 11.0875
+2026-05-08 15:57:03,594 - INFO - Epoch 8/20, Global Step 1800, Distill Loss: 420.2595, CE Loss: 11.0641
+2026-05-08 15:57:54,724 - INFO - Epoch 8/20, Global Step 1900, Distill Loss: 241.3002, CE Loss: 10.2293
+2026-05-08 15:58:46,129 - INFO - Epoch 8/20, Global Step 2000, Distill Loss: 281.5613, CE Loss: 11.7222
+2026-05-08 15:58:46,130 - INFO - Epoch 8/20 completed in 128.31 sec | Avg Distill Loss: 359.9045 | Avg CE Loss: 11.1594
+2026-05-08 15:59:37,394 - INFO - Epoch 9/20, Global Step 2100, Distill Loss: 422.4785, CE Loss: 11.3701
+2026-05-08 16:00:28,720 - INFO - Epoch 9/20, Global Step 2200, Distill Loss: 399.8429, CE Loss: 12.0705
+2026-05-08 16:00:54,364 - INFO - Epoch 9/20 completed in 128.23 sec | Avg Distill Loss: 338.7496 | Avg CE Loss: 11.2195
+2026-05-08 16:01:20,262 - INFO - Epoch 10/20, Global Step 2300, Distill Loss: 323.2631, CE Loss: 11.4547
+2026-05-08 16:02:11,545 - INFO - Epoch 10/20, Global Step 2400, Distill Loss: 195.1321, CE Loss: 10.6267
+2026-05-08 16:03:02,808 - INFO - Epoch 10/20, Global Step 2500, Distill Loss: 140.3717, CE Loss: 10.7099
+2026-05-08 16:03:02,809 - INFO - Epoch 10/20 completed in 128.44 sec | Avg Distill Loss: 321.7785 | Avg CE Loss: 11.2727
+2026-05-08 16:03:54,455 - INFO - Epoch 11/20, Global Step 2600, Distill Loss: 269.5669, CE Loss: 11.0269
+2026-05-08 16:04:46,001 - INFO - Epoch 11/20, Global Step 2700, Distill Loss: 425.7896, CE Loss: 12.1954
+2026-05-08 16:05:11,678 - INFO - Epoch 11/20 completed in 128.87 sec | Avg Distill Loss: 307.0693 | Avg CE Loss: 11.3252
+2026-05-08 16:05:37,327 - INFO - Epoch 12/20, Global Step 2800, Distill Loss: 354.9953, CE Loss: 11.7701
+2026-05-08 16:06:28,938 - INFO - Epoch 12/20, Global Step 2900, Distill Loss: 323.3235, CE Loss: 11.6971
+2026-05-08 16:07:20,322 - INFO - Epoch 12/20, Global Step 3000, Distill Loss: 185.1325, CE Loss: 12.0059
+2026-05-08 16:07:20,322 - INFO - Epoch 12/20 completed in 128.64 sec | Avg Distill Loss: 294.6182 | Avg CE Loss: 11.3616
+2026-05-08 16:08:11,555 - INFO - Epoch 13/20, Global Step 3100, Distill Loss: 329.3172, CE Loss: 11.3078
+2026-05-08 16:09:03,154 - INFO - Epoch 13/20, Global Step 3200, Distill Loss: 247.6372, CE Loss: 11.5884
+2026-05-08 16:09:28,961 - INFO - Epoch 13/20 completed in 128.64 sec | Avg Distill Loss: 284.9503 | Avg CE Loss: 11.3942
+2026-05-08 16:09:54,599 - INFO - Epoch 14/20, Global Step 3300, Distill Loss: 237.1720, CE Loss: 11.5885
+2026-05-08 16:10:45,864 - INFO - Epoch 14/20, Global Step 3400, Distill Loss: 185.2697, CE Loss: 11.5791
+2026-05-08 16:11:37,486 - INFO - Epoch 14/20, Global Step 3500, Distill Loss: 258.3071, CE Loss: 12.1073
+2026-05-08 16:11:37,487 - INFO - Epoch 14/20 completed in 128.53 sec | Avg Distill Loss: 273.4271 | Avg CE Loss: 11.4241
+2026-05-08 16:12:28,855 - INFO - Epoch 15/20, Global Step 3600, Distill Loss: 281.0232, CE Loss: 11.8406
+2026-05-08 16:13:20,201 - INFO - Epoch 15/20, Global Step 3700, Distill Loss: 202.7379, CE Loss: 11.7414
+2026-05-08 16:13:46,103 - INFO - Epoch 15/20 completed in 128.62 sec | Avg Distill Loss: 263.4807 | Avg CE Loss: 11.4478
+2026-05-08 16:14:11,742 - INFO - Epoch 16/20, Global Step 3800, Distill Loss: 342.5185, CE Loss: 12.0987
+2026-05-08 16:15:03,158 - INFO - Epoch 16/20, Global Step 3900, Distill Loss: 216.6244, CE Loss: 11.9186
+2026-05-08 16:15:54,527 - INFO - Epoch 16/20, Global Step 4000, Distill Loss: 293.2294, CE Loss: 11.0458
+2026-05-08 16:15:54,528 - INFO - Epoch 16/20 completed in 128.42 sec | Avg Distill Loss: 257.2073 | Avg CE Loss: 11.4725
+2026-05-08 16:16:46,090 - INFO - Epoch 17/20, Global Step 4100, Distill Loss: 204.7417, CE Loss: 11.3040
+2026-05-08 16:17:37,591 - INFO - Epoch 17/20, Global Step 4200, Distill Loss: 222.3447, CE Loss: 11.5247
+2026-05-08 16:18:03,187 - INFO - Epoch 17/20 completed in 128.66 sec | Avg Distill Loss: 249.8697 | Avg CE Loss: 11.5096
+2026-05-08 16:18:28,841 - INFO - Epoch 18/20, Global Step 4300, Distill Loss: 234.8822, CE Loss: 11.1552
+2026-05-08 16:19:20,461 - INFO - Epoch 18/20, Global Step 4400, Distill Loss: 219.1642, CE Loss: 11.2756
+2026-05-08 16:20:11,722 - INFO - Epoch 18/20, Global Step 4500, Distill Loss: 235.0477, CE Loss: 11.8593
+2026-05-08 16:20:11,723 - INFO - Epoch 18/20 completed in 128.53 sec | Avg Distill Loss: 242.7553 | Avg CE Loss: 11.5314
+2026-05-08 16:21:02,894 - INFO - Epoch 19/20, Global Step 4600, Distill Loss: 213.2454, CE Loss: 10.7644
+2026-05-08 16:21:54,468 - INFO - Epoch 19/20, Global Step 4700, Distill Loss: 257.4077, CE Loss: 11.3975
+2026-05-08 16:22:20,111 - INFO - Epoch 19/20 completed in 128.39 sec | Avg Distill Loss: 235.7038 | Avg CE Loss: 11.5572
+2026-05-08 16:22:45,771 - INFO - Epoch 20/20, Global Step 4800, Distill Loss: 198.1744, CE Loss: 12.0267
+2026-05-08 16:23:37,425 - INFO - Epoch 20/20, Global Step 4900, Distill Loss: 254.9161, CE Loss: 12.4391
+2026-05-08 16:24:28,860 - INFO - Epoch 20/20, Global Step 5000, Distill Loss: 226.9011, CE Loss: 11.4129
+2026-05-08 16:24:28,860 - INFO - Epoch 20/20 completed in 128.75 sec | Avg Distill Loss: 229.7394 | Avg CE Loss: 11.5473
+2026-05-08 16:24:28,890 - INFO - Finished training student model with 1 layers. CSV saved to results/student_layer_1.csv.
+2026-05-08 16:24:41,079 - INFO - Generating plots for accumulated losses and training times.
+2026-05-08 16:24:42,261 - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2026-05-08 16:24:42,262 - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2026-05-08 16:24:42,377 - INFO - Plots generated successfully.
+2026-05-08 16:24:42,377 - INFO - All experiments completed successfully.

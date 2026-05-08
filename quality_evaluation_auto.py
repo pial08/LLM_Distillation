@@ -35,59 +35,136 @@ from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, GPT2Config, GPT2LMHeadModel
 from transformers import LlamaConfig, LlamaForCausalLM
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+import evaluate
+from openai import OpenAI
+from google import genai
+import re
+from dotenv import load_dotenv
 
 
-# ================== Teacher-Student Evaluation Add-On ==================
 
 
-# def evaluate_teacher_student(sentences, teacher_model, student_model, tokenizer, device, max_gen_len=50):
-#     """
-#     Generates outputs from teacher and student models for given sentences.
-#     Computes BLEU, ROUGE-L, and cosine similarity of sentence embeddings.
-#     Returns a list of dicts and prints outputs.
-#     """
-#     rouge = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
-#     embed_model = SentenceTransformer('all-MiniLM-L6-v2')
-#     results = []
+OPENAI_JUDGE_MODEL = "gpt-5-nano"
+GEMINI_JUDGE_MODEL = "gemini-3.1-pro-preview"
+load_dotenv() 
 
-#     for i, sentence in enumerate(sentences):
-#         inputs = tokenizer(sentence, return_tensors="pt").to(device)
 
-#         # Teacher prediction
-#         with torch.no_grad():
-#             teacher_out = teacher_model.generate(**inputs, max_new_tokens=max_gen_len)
-#         teacher_text = tokenizer.decode(teacher_out[0], skip_special_tokens=True)
+def load_config(config_path):
+    """Loads configuration parameters from a JSON file."""
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    return config
 
-#         # Student prediction
-#         with torch.no_grad():
-#             student_out = student_model.generate(**inputs, max_new_tokens=max_gen_len)
-#         student_text = tokenizer.decode(student_out[0], skip_special_tokens=True)
+def extract_json(text):
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
 
-#         # Compute metrics
-#         bleu_score = sentence_bleu([teacher_text.split()], student_text.split())
-#         rouge_score = rouge.score(teacher_text, student_text)['rougeL'].fmeasure
-#         teacher_emb = embed_model.encode(teacher_text, convert_to_tensor=True)
-#         student_emb = embed_model.encode(student_text, convert_to_tensor=True)
-#         cosine_sim = util.cos_sim(teacher_emb, student_emb).item()
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        return json.loads(match.group(0))
 
-#         # Store results
-#         results.append({
-#             'sentence': sentence,
-#             'teacher': teacher_text,
-#             'student': student_text,
-#             'bleu': bleu_score,
-#             'rougeL': rouge_score,
-#             'cosine_sim': cosine_sim
-#         })
+    raise ValueError(f"Could not parse JSON from model response:\n{text}")
 
-#         # Print for inspection
-#         print(f"\nSample {i+1}:")
-#         print("Input:", sentence)
-#         print("Teacher (ground truth):", teacher_text)
-#         print("Student (predicted)  :", student_text)
-#         print(f"BLEU: {bleu_score:.4f}, ROUGE-L: {rouge_score:.4f}, CosineSim: {cosine_sim:.4f}")
 
-#     return results
+
+def build_judge_prompt(input_sentence, teacher_text, student_text):
+    return f"""
+You are an expert evaluator for teacher-student knowledge distillation.
+
+Compare the student output against the teacher output for the same input. Use the below guidelines to judge the teacher output vs the student output.
+Be gentle with scoring, 
+
+Input sentence:
+{input_sentence}
+
+Teacher output:
+{teacher_text}
+
+Student output:
+{student_text}
+
+Return JSON only with these fields:
+{{
+  "overall_score": number from 0 to 5
+}}
+
+Scoring rules:
+5 = nearly identical or fully equivalent in meaning or token matching
+4 = mostly equivalent with minor differences
+3 = partially similar but missing/changing some meaning
+2 = weakly related
+1 = mostly unrelated
+0 = completely unrelated or empty
+"""
+
+def gpt_judge(input_sentence, teacher_text, student_text):
+    #api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        return None
+
+    client = OpenAI(api_key=api_key)
+
+    prompt = build_judge_prompt(input_sentence, teacher_text, student_text)
+
+    response = client.responses.create(
+        model=OPENAI_JUDGE_MODEL,
+        input=prompt
+    )
+
+    return extract_json(response.output_text)
+
+
+
+def gemini_judge(input_sentence, teacher_text, student_text):
+    #api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.getenv('GEMINI_API_KEY')
+    if not api_key:
+        return None
+
+    client = genai.Client(api_key=api_key)
+
+    prompt = build_judge_prompt(input_sentence, teacher_text, student_text)
+
+    response = client.models.generate_content(
+        model=GEMINI_JUDGE_MODEL,
+        contents=prompt
+    )
+
+    return extract_json(response.text)
+
+
+
+# def create_teacher_model(config: dict):
+#     teacher_model_name = config.get("teacher_model_name", "distilgpt2")
+#     qcfg = config.get("teacher_quantization", {})
+
+#     tokenizer = AutoTokenizer.from_pretrained(teacher_model_name)
+#     if tokenizer.pad_token is None:
+#         tokenizer.pad_token = tokenizer.eos_token
+
+#     quantization_config = build_bnb_config(qcfg)
+
+#     model_kwargs = {
+#         "pretrained_model_name_or_path": teacher_model_name,
+#     }
+
+#     if quantization_config is not None:
+#         model_kwargs["quantization_config"] = quantization_config
+#         model_kwargs["device_map"] = qcfg.get("device_map", "auto")
+#         dtype = qcfg.get("torch_dtype", "auto")
+#         model_kwargs["dtype"] = dtype  # transformers docs support dtype="auto"
+#     else:
+#         torch_dtype = get_torch_dtype(config.get("teacher_torch_dtype"))
+#         if torch_dtype is not None:
+#             model_kwargs["torch_dtype"] = torch_dtype
+
+#     teacher_model = AutoModelForCausalLM.from_pretrained(**model_kwargs)
+#     teacher_model.eval()
+
+#     return teacher_model, tokenizer
 
 def evaluate_teacher_student(
     sentences,
@@ -111,13 +188,29 @@ def evaluate_teacher_student(
 
     rouge = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
     embed_model = SentenceTransformer('all-MiniLM-L6-v2')
+    bertscore_metric = evaluate.load("bertscore")
     smooth = SmoothingFunction().method1
 
     results = []
 
+    # total_bleu = 0.0
+    # total_rougeL = 0.0
+    # total_cosine_sim = 0.0
+
+    # token matching metrics
     total_bleu = 0.0
     total_rougeL = 0.0
+    
+    # embedding matching metrics
     total_cosine_sim = 0.0
+    total_bertscore_f1 = 0.0
+    
+    # llm evaluation
+    total_gpt_score = 0.0
+    total_gemini_score = 0.0
+
+    gpt_count = 0
+    gemini_count = 0
 
     for i, sentence in enumerate(sentences):
         inputs = tokenizer(sentence, return_tensors="pt").to(device)
@@ -138,14 +231,52 @@ def evaluate_teacher_student(
             student_text.split(),
             smoothing_function=smooth
         )
+
+        bertscore_result = bertscore_metric.compute(
+            predictions=[student_text],
+            references=[teacher_text],
+            lang="en"
+        )
+
+
+        gpt_result = None
+        gemini_result = None
+
+        gpt_score = None
+        gemini_score = None
+
+        try:
+            gpt_result = gpt_judge(sentence, teacher_text, student_text)
+            if gpt_result is not None:
+                gpt_score = float(gpt_result["overall_score"])
+                total_gpt_score += gpt_score
+                gpt_count += 1
+        except Exception as e:
+            gpt_result = {"error": str(e)}
+
+        try:
+            gemini_result = gemini_judge(sentence, teacher_text, student_text)
+            if gemini_result is not None:
+                gemini_score = float(gemini_result["overall_score"])
+                total_gemini_score += gemini_score
+                gemini_count += 1
+        except Exception as e:
+            gemini_result = {"error": str(e)}
+
+        
+
+
         rouge_score = rouge.score(teacher_text, student_text)['rougeL'].fmeasure
         teacher_emb = embed_model.encode(teacher_text, convert_to_tensor=True)
         student_emb = embed_model.encode(student_text, convert_to_tensor=True)
         cosine_sim = util.cos_sim(teacher_emb, student_emb).item()
+        bert_score_f1 = bertscore_result["f1"][0]
+
 
         total_bleu += bleu_score
         total_rougeL += rouge_score
         total_cosine_sim += cosine_sim
+        total_bertscore_f1 += bert_score_f1
 
         # Store results
         results.append({
@@ -154,7 +285,10 @@ def evaluate_teacher_student(
             'student': student_text,
             'bleu': bleu_score,
             'rougeL': rouge_score,
-            'cosine_sim': cosine_sim
+            'cosine_sim': cosine_sim,
+            'bertscore': bert_score_f1,
+            "gpt_overall_score": gpt_score
+            #"gemini_overall_score": gemini_score
         })
 
         # Print for inspection
@@ -162,19 +296,42 @@ def evaluate_teacher_student(
         print("Input:", sentence)
         print("Teacher (ground truth):", teacher_text)
         print("Student (predicted)  :", student_text)
-        print(f"BLEU: {bleu_score:.4f}, ROUGE-L: {rouge_score:.4f}, CosineSim: {cosine_sim:.4f}")
+        #print(f"BLEU: {bleu_score:.4f}, ROUGE-L: {rouge_score:.4f}, CosineSim: {cosine_sim:.4f}, BERTScore_F1: {bert_score_f1:.4f}, GPT Score: {gpt_score:.4f}, GEMINI Score: {gemini_score:.4f}")
+        print(f"BLEU: {bleu_score:.4f}, ROUGE-L: {rouge_score:.4f}, CosineSim: {cosine_sim:.4f}, BERTScore_F1: {bert_score_f1:.4f}")
+
+        if gpt_score is not None:
+            print(f"GPT Judge Score: {gpt_score:.2f}/5")
+        else:
+            print("GPT Judge Score: skipped or failed")
+
+        if gemini_score is not None:
+            print(f"Gemini Judge Score: {gemini_score:.2f}/5")
+        else:
+            print("Gemini Judge Score: skipped or failed")
 
     num_samples = len(results)
     avg_metrics = {
         'avg_bleu': total_bleu / num_samples if num_samples > 0 else 0.0,
         'avg_rougeL': total_rougeL / num_samples if num_samples > 0 else 0.0,
         'avg_cosine_sim': total_cosine_sim / num_samples if num_samples > 0 else 0.0,
+        'avg_bert_score_f1': total_bertscore_f1 / num_samples if num_samples else 0.0,
+        'avg_gpt_judge_score': total_gpt_score / gpt_count if gpt_count else None,
+        'avg_gemini_judge_score': total_gemini_score / gemini_count if gemini_count else None,
+        'gpt_judged_samples': gpt_count,
+        'gemini_judged_samples': gemini_count
     }
+
+
+
+    
 
     print("\n=== Average Metrics ===")
     print(f"Average BLEU      : {avg_metrics['avg_bleu']:.4f}")
     print(f"Average ROUGE-L   : {avg_metrics['avg_rougeL']:.4f}")
     print(f"Average CosineSim : {avg_metrics['avg_cosine_sim']:.4f}")
+    print(f"Average BERTScore : {avg_metrics['avg_bert_score_f1']:.4f}")
+    print(f"Average GPT Score : {avg_metrics['avg_gpt_judge_score']:.4f}")
+    print(f"Average GEMINI Score : {avg_metrics['avg_gemini_judge_score']:.4f}")
 
     return results, avg_metrics
 
@@ -182,6 +339,9 @@ def evaluate_and_save(student_model, teacher_model, tokenizer, device, result_di
     """
     Helper to automatically run evaluation on WikiText samples for a student model
     and save results to CSV.
+    """
+    """
+    Should be changed to test
     """
     # Take first N non-empty sentences from WikiText train split
     dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
@@ -203,7 +363,7 @@ result_dir = "eval_results"
 
 
 student_model_name = "saved_models/TestLLaMa-v1.0"
-teacher_model_name = "meta-llama/Llama-3.2-3B"
+teacher_model_name = "meta-llama/Llama-3.1-8B-Instruct"
 
 # ./gkd_out/RL_Distil_1.2
 # saved_models/student_model_student_layers
@@ -211,11 +371,28 @@ teacher_model_name = "meta-llama/Llama-3.2-3B"
 
 
 student_model = AutoModelForCausalLM.from_pretrained(student_model_name).to(device)
+
+
+
+#original teacher model leading
 teacher_model = AutoModelForCausalLM.from_pretrained(teacher_model_name).to(device)
 tokenizer = AutoTokenizer.from_pretrained(teacher_model_name)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 teacher_model.eval()
+
+
+# # Load teacher using funciton
+# # Load configuration
+# config_path = "config.json"
+# config = load_config(config_path)
+
+# # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# # logging.info("Starting training on GPU" if torch.cuda.is_available() else "Starting training on CPU")
+
+# # Load teacher model and tokenizer (original) -- commenting temp
+# teacher_model_name = config.get("teacher_model_name", "distilgpt2")
+# teacher_model, tokenizer = create_teacher_model(config)
 
 
 evaluate_and_save(student_model, teacher_model, tokenizer, device, result_dir, num_samples=50)

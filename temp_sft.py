@@ -42,9 +42,10 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import pandas as pd
 from datasets import load_dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, GPT2Config, GPT2LMHeadModel
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, GPT2LMHeadModel
 from transformers import LlamaConfig, LlamaForCausalLM
-from datasets import load_from_disk
+from datasets import load_from_disk, concatenate_datasets
+
 
 
 def setup_logging(result_dir):
@@ -60,32 +61,174 @@ def setup_logging(result_dir):
     console.setFormatter(formatter)
     logging.getLogger("").addHandler(console)
 
+
+def get_torch_dtype(dtype_name: str | None):
+    if dtype_name is None:
+        return None
+    mapping = {
+        "float16": torch.float16,
+        "fp16": torch.float16,
+        "bfloat16": torch.bfloat16,
+        "bf16": torch.bfloat16,
+        "float32": torch.float32,
+        "fp32": torch.float32,
+    }
+    key = dtype_name.lower()
+    if key not in mapping:
+        raise ValueError(f"Unsupported dtype in config: {dtype_name}")
+    return mapping[key]
+
+def build_bnb_config(qcfg: dict | None):
+    if not qcfg or not qcfg.get("enabled", False):
+        return None
+
+    mode = qcfg.get("mode", "").lower()
+
+    if mode == "8bit":
+        return BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_threshold=qcfg.get("llm_int8_threshold", 6.0),
+            llm_int8_enable_fp32_cpu_offload=qcfg.get("llm_int8_enable_fp32_cpu_offload", False),
+            llm_int8_skip_modules=qcfg.get("llm_int8_skip_modules"),
+        )
+
+    if mode == "4bit":
+        compute_dtype = get_torch_dtype(qcfg.get("bnb_4bit_compute_dtype", "bfloat16"))
+        return BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type=qcfg.get("bnb_4bit_quant_type", "nf4"),
+            bnb_4bit_use_double_quant=qcfg.get("bnb_4bit_use_double_quant", True),
+            bnb_4bit_compute_dtype=compute_dtype,
+        )
+
+    raise ValueError(f"Unsupported quantization mode: {mode}")
+
+
 def load_config(config_path):
     """Loads configuration parameters from a JSON file."""
     with open(config_path, "r") as f:
         config = json.load(f)
     return config
 
-# def prepare_dataset(tokenizer, max_length):
-#     """Loads and tokenizes the wikitext dataset."""
-#     #dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
-#     dataset = load_dataset(
-#         "wikitext",
-#         "wikitext-2-raw-v1",
-#         split="train[:5000]"
-#     )
-    
-#     def tokenize_function(examples):
-#         return tokenizer(examples["text"], truncation=True, padding="max_length", max_length=max_length)
-    
-#     tokenized_dataset = dataset.map(tokenize_function, batched=True)
-#     tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
-#     return tokenized_dataset
+
+def prepare_mixed_dataset(
+    tokenizer,
+    max_length=256,
+    total_samples=10000,
+    wikitext_ratio=0.5,
+    seed=42,
+    split="train",
+):
+    """
+    Load WikiText-2 and SQuAD, convert them to a common text format,
+    sample a user-defined amount, combine, shuffle, tokenize, and return.
+
+    Args:
+        tokenizer: Hugging Face tokenizer
+        max_length: max token length
+        total_samples: total number of examples in final mixed dataset
+        wikitext_ratio: fraction from WikiText; rest from SQuAD
+        seed: random seed
+        split: 'train' or 'validation'
+
+    Returns:
+        tokenized_dataset
+    """
+
+    print("Loading WikiText-2 and SQuAD...")
+
+    # 1) Load datasets
+    wikitext = load_dataset("wikitext", "wikitext-2-raw-v1", split=split)
+    squad = load_dataset("rajpurkar/squad", split=split)
+
+    # 2) Convert each to a common "text" field
+    # WikiText already has "text", but some rows are empty
+    wikitext = wikitext.filter(lambda x: x["text"] is not None and x["text"].strip() != "")
+    wikitext = wikitext.map(lambda x: {"text": x["text"]})
+
+    # Convert SQuAD row into a single text string
+    def squad_to_text(example):
+        answer_text = ""
+        if example["answers"]["text"]:
+            answer_text = example["answers"]["text"][0]
+
+        combined = (
+            f"Context: {example['context']}\n"
+            f"Question: {example['question']}\n"
+            f"Answer: {answer_text}"
+        )
+        return {"text": combined}
+
+    squad = squad.map(squad_to_text)
+
+    # Keep only the text column
+    wikitext = wikitext.remove_columns([c for c in wikitext.column_names if c != "text"])
+    squad = squad.remove_columns([c for c in squad.column_names if c != "text"])
+
+    # 3) Shuffle before sampling
+    wikitext = wikitext.shuffle(seed=seed)
+    squad = squad.shuffle(seed=seed)
+
+    # 4) Decide sample counts
+    num_wikitext = int(total_samples * wikitext_ratio)
+    num_squad = total_samples - num_wikitext
+
+    num_wikitext = min(num_wikitext, len(wikitext))
+    num_squad = min(num_squad, len(squad))
+
+    wikitext = wikitext.select(range(num_wikitext))
+    squad = squad.select(range(num_squad))
+
+    print(f"Selected {len(wikitext)} WikiText samples")
+    print(f"Selected {len(squad)} SQuAD samples")
+
+    # 5) Combine and reshuffle
+    combined = concatenate_datasets([wikitext, squad]).shuffle(seed=seed)
+
+    # 6) Tokenize
+    def tokenize_function(examples):
+        texts = [text + tokenizer.eos_token for text in examples["text"]]
+        return tokenizer(
+            texts,
+            truncation=True,
+            padding="max_length",
+            max_length=max_length,
+        )
+        # return tokenizer(
+        #     #examples["text"],
+        #     truncation=True,
+        #     padding="max_length",
+        #     max_length=max_length,
+        # )
+
+    tokenized_dataset = combined.map(tokenize_function, batched=True)
+    tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
+
+    return tokenized_dataset
 
 
-def prepare_dataset(tokenizer, max_length):
+def prepare_dataset_HF(tokenizer, max_length):
+    print("Using HF Dataset")
+    """Loads and tokenizes the wikitext dataset."""
+    #dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
+    dataset = load_dataset(
+        "wikitext",
+        "wikitext-2-raw-v1",
+        split="train[:5000]"
+    )
+    
+    def tokenize_function(examples):
+        return tokenizer(examples["text"], truncation=True, padding="max_length", max_length=max_length)
+    
+    tokenized_dataset = dataset.map(tokenize_function, batched=True)
+    tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
+    return tokenized_dataset
+
+
+def prepare_dataset_local(tokenizer, max_length):
+    print("Using HF Dataset")
     """Loads dataset from disk, splits it, and tokenizes train/val/test."""
-
+    print("Inside dataset loader")
     TEST_DATASET_PATH = "Datasets/distill_data/train"
     dataset = load_from_disk(TEST_DATASET_PATH)
 
@@ -100,12 +243,14 @@ def prepare_dataset(tokenizer, max_length):
 
     # val_dataset = val_test["train"]
     # test_dataset = val_test["test"]
-
+    print("Printing a sample dataset", train_dataset[0])
+    print("----Dataset Preparation----")    
     def tokenize_function(examples):
         texts = [
             f"{prompt}\n{completion}"
             for prompt, completion in zip(examples["prompt"], examples["completion"])
         ]
+        
 
         tokenized = tokenizer(
             texts,
@@ -120,7 +265,7 @@ def prepare_dataset(tokenizer, max_length):
     train_dataset = train_dataset.map(tokenize_function, batched=True)
     # val_dataset = val_dataset.map(tokenize_function, batched=True)
     # test_dataset = test_dataset.map(tokenize_function, batched=True)
-
+    #print("length of train dataset ", len(train_dataset))
     columns = ["input_ids", "attention_mask"]
 
     train_dataset.set_format(type="torch", columns=columns)
@@ -130,6 +275,49 @@ def prepare_dataset(tokenizer, max_length):
     #return train_dataset, val_dataset, test_dataset
     return train_dataset
 
+def create_teacher_model(config: dict, device):
+    teacher_model_name = config.get("teacher_model_name", "distilgpt2")
+    if config.get("quantization"):
+        print("Quantization is True")
+        if config.get("quantizatio_bit") == 4:
+            print("4 Bit Quantization")
+            qcfg = config.get("teacher_quantization_4", {})
+        else:
+            print("8 Bit Quantization")
+            qcfg = config.get("teacher_quantization_8", {})
+
+        tokenizer = AutoTokenizer.from_pretrained(teacher_model_name)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        quantization_config = build_bnb_config(qcfg)
+        model_kwargs = {
+            "pretrained_model_name_or_path": teacher_model_name,
+        }
+        if quantization_config is not None:
+            model_kwargs["quantization_config"] = quantization_config
+            model_kwargs["device_map"] = qcfg.get("device_map", "auto")
+            dtype = qcfg.get("torch_dtype", "auto")
+            model_kwargs["dtype"] = dtype  # transformers docs support dtype="auto"
+        else:
+            torch_dtype = get_torch_dtype(config.get("teacher_torch_dtype"))
+            if torch_dtype is not None:
+                model_kwargs["torch_dtype"] = torch_dtype
+
+        teacher_model = AutoModelForCausalLM.from_pretrained(**model_kwargs)
+        teacher_model.eval()
+    else:
+        print("Quantization is false")
+        # Will be inside an else
+        teacher_model = AutoModelForCausalLM.from_pretrained(teacher_model_name).to(device)
+        tokenizer = AutoTokenizer.from_pretrained(teacher_model_name)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        teacher_model.eval()
+
+    
+
+    return teacher_model, tokenizer
 
 def create_student_model(teacher_model, tokenizer, student_layers: int, max_positions: int = 2048):
     """
@@ -144,7 +332,7 @@ def create_student_model(teacher_model, tokenizer, student_layers: int, max_posi
     student_config = LlamaConfig(
         vocab_size=len(tokenizer),
         hidden_size=teacher_config.hidden_size,
-        intermediate_size=teacher_config.intermediate_size,
+        intermediate_size=teacher_config.intermediate_size, # experiment by changing the intermediate size
         num_hidden_layers=student_layers,
         num_attention_heads=teacher_config.num_attention_heads,
         num_key_value_heads=getattr(teacher_config, "num_key_value_heads", teacher_config.num_attention_heads),
@@ -318,13 +506,20 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info("Starting training on GPU" if torch.cuda.is_available() else "Starting training on CPU")
     
-    # Load teacher model and tokenizer
+    # Load teacher model and tokenizer (original) -- commenting temp
     teacher_model_name = config.get("teacher_model_name", "distilgpt2")
-    teacher_model = AutoModelForCausalLM.from_pretrained(teacher_model_name).to(device)
-    tokenizer = AutoTokenizer.from_pretrained(teacher_model_name)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    teacher_model.eval()
+    # teacher_model = AutoModelForCausalLM.from_pretrained(teacher_model_name).to(device)
+    # tokenizer = AutoTokenizer.from_pretrained(teacher_model_name)
+    # if tokenizer.pad_token is None:
+    #     tokenizer.pad_token = tokenizer.eos_token
+    # teacher_model.eval()
+
+    teacher_model, tokenizer = create_teacher_model(config, device)
+
+
+
+
+
     # For GPT Style Models
     #logging.info(f"Teacher model: {teacher_model_name} | Transformer blocks: {teacher_model.config.n_layer}")
     # for LLaMa Style Models
@@ -332,7 +527,20 @@ def main():
 
     # Prepare dataset and dataloader (same for all experiments)
     max_length = config.get("max_length", 128)
-    tokenized_dataset = prepare_dataset(tokenizer, max_length)
+    
+    if config.get("local_dataset"):
+        tokenized_dataset = prepare_dataset_local(tokenizer, max_length)
+    else:
+        #tokenized_dataset = prepare_dataset_HF(tokenizer, max_length)
+        tokenized_dataset = prepare_mixed_dataset(
+            tokenizer=tokenizer,
+            max_length=256,
+            total_samples=2000,
+            wikitext_ratio=0.6,
+            seed=42,
+            split="train",
+        )
+    
     batch_size = config.get("batch_size", 8)
     dataloader = DataLoader(tokenized_dataset, batch_size=batch_size, shuffle=True)
     

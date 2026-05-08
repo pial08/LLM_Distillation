@@ -3,7 +3,7 @@
   "seed": 42,
   "use_fp16": true,
 
-  "teacher_model_name": "meta-llama/Meta-Llama-3-8B",
+  "teacher_model_name": "meta-llama/Meta-Llama-3-8B-Instruct",
 
   "max_samples": 20,
   "min_chars": 20,
@@ -25,7 +25,7 @@
   "max_grad_norm": 1,
 
   "student_model": {
-    "base_model_name": "saved_models/TestLLaMa-v1.0",
+    "base_model_name": "meta-llama/Meta-Llama-3-8B-Instruct",
     "hidden_size": 512,
     "intermediate_size": 1024,
     "num_hidden_layers": 6,
