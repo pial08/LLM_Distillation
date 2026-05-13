@@ -9,7 +9,8 @@ import torch
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
-from datasets import load_from_disk
+from datasets import load_from_disk, concatenate_datasets
+
 
 from peft import LoraConfig
 
@@ -190,6 +191,100 @@ def build_token_windows_from_wikitext(
     return windows
 
 
+def prepare_mixed_dataset(
+    max_length=256,
+    total_samples=10000,
+    wikitext_ratio=0.5,
+    seed=42,
+    split="train",
+):
+    """
+    Load WikiText-2 and SQuAD, convert them to a common text format,
+    sample a user-defined amount, combine, shuffle, tokenize, and return.
+
+    Args:
+        tokenizer: Hugging Face tokenizer
+        max_length: max token length
+        total_samples: total number of examples in final mixed dataset
+        wikitext_ratio: fraction from WikiText; rest from SQuAD
+        seed: random seed
+        split: 'train' or 'validation'
+
+    Returns:
+        tokenized_dataset
+    """
+
+    print("Loading WikiText-2 and SQuAD...")
+
+    # 1) Load datasets
+    wikitext = load_dataset("wikitext", "wikitext-2-raw-v1", split=split)
+    squad = load_dataset("rajpurkar/squad", split=split)
+
+    # 2) Convert each to a common "text" field
+    # WikiText already has "text", but some rows are empty
+    wikitext = wikitext.filter(lambda x: x["text"] is not None and x["text"].strip() != "")
+    wikitext = wikitext.map(lambda x: {"text": x["text"]})
+
+    # Convert SQuAD row into a single text string
+    def squad_to_text(example):
+        answer_text = ""
+        if example["answers"]["text"]:
+            answer_text = example["answers"]["text"][0]
+
+        combined = (
+            f"Context: {example['context']}\n"
+            f"Question: {example['question']}\n"
+            f"Answer: {answer_text}"
+        )
+        return {"text": combined}
+
+    squad = squad.map(squad_to_text)
+
+    # Keep only the text column
+    wikitext = wikitext.remove_columns([c for c in wikitext.column_names if c != "text"])
+    squad = squad.remove_columns([c for c in squad.column_names if c != "text"])
+
+    # 3) Shuffle before sampling
+    wikitext = wikitext.shuffle(seed=seed)
+    squad = squad.shuffle(seed=seed)
+
+    # 4) Decide sample counts
+    num_wikitext = int(total_samples * wikitext_ratio)
+    num_squad = total_samples - num_wikitext
+
+    num_wikitext = min(num_wikitext, len(wikitext))
+    num_squad = min(num_squad, len(squad))
+
+    wikitext = wikitext.select(range(num_wikitext))
+    squad = squad.select(range(num_squad))
+
+    print(f"Selected {len(wikitext)} WikiText samples")
+    print(f"Selected {len(squad)} SQuAD samples")
+
+    # 5) Combine and reshuffle
+    combined_dataset = concatenate_datasets([wikitext, squad]).shuffle(seed=seed)
+    return combined_dataset
+    # 6) Tokenize
+    def tokenize_function(examples):
+        texts = [text + tokenizer.eos_token for text in examples["text"]]
+        return tokenizer(
+            texts,
+            truncation=True,
+            padding="max_length",
+            max_length=max_length,
+        )
+        # return tokenizer(
+        #     #examples["text"],
+        #     truncation=True,
+        #     padding="max_length",
+        #     max_length=max_length,
+        # )
+
+    tokenized_dataset = combined.map(tokenize_function, batched=True)
+    tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
+
+    return tokenized_dataset
+
 @torch.no_grad()
 def generate_teacher_outputs_for_sft(
     teacher_model,
@@ -300,17 +395,6 @@ student_model, student_tokenizer = create_student_model(
 ####    ***** Freezing Some Layers ***** ####
 student_model = freeze_lower_layers(student_model, num_trainable_layers=16)
 
-# teacher_dataset = generate_teacher_outputs_for_sft(
-#     teacher_model=teacher_model,
-#     teacher_tokenizer=teacher_tokenizer,
-#     device=device,
-#     input_token_length=128,
-#     output_max_new_tokens=256,
-#     source_split="train",
-#     source_stride=128,
-#     max_samples=10,
-#     batch_size=2,
-# )
 
 
 sft_config = SFTConfig(
@@ -334,39 +418,37 @@ sft_config = SFTConfig(
 )
 
 
-# split_1 = teacher_dataset.train_test_split(test_size=0.2, seed=42)
-# train_dataset = split_1["train"]
-# temp_dataset = split_1["test"]
 
-# split_2 = temp_dataset.train_test_split(test_size=0.5, seed=42)
-# val_dataset = split_2["train"]
-# test_dataset = split_2["test"]
+# Loading Local Dataset
+# dataset = load_from_disk("Datasets/distill_data/train")
+# splits = dataset.train_test_split(test_size=0.2, seed=42)
 
+# train_dataset = splits["train"]
+# temp_dataset = splits["test"]
+# val_test = temp_dataset.train_test_split(test_size=0.5, seed=42)
+# val_dataset = val_test["train"]
+# test_dataset = val_test["test"]
 
-# train_dataset.save_to_disk("./distill_data/train")
-# val_dataset.save_to_disk("./distill_data/val")
-# test_dataset.save_to_disk("./distill_data/test")
+# Original student model: meta-llama/Llama-3.2-1B-Instruct
 
-
-# train_dataset = load_from_disk("Datasets/distill_data/train")
-# val_dataset = load_from_disk("Datasets/distill_data/train")
-# test_dataset = load_from_disk("Datasets/distill_data/train")
-
-
-dataset = load_from_disk("Datasets/distill_data/train")
+# Load mixed dataset
+max_length = config.get("max_length", 128)
+num_samples = config.get("num_samples", 1000)
+dataset = prepare_mixed_dataset(
+            max_length=256,
+            total_samples=num_samples,
+            wikitext_ratio=0.9,
+            seed=42,
+            split="train",
+        )
 
 splits = dataset.train_test_split(test_size=0.2, seed=42)
 
 train_dataset = splits["train"]
 temp_dataset = splits["test"]
-
 val_test = temp_dataset.train_test_split(test_size=0.5, seed=42)
-
 val_dataset = val_test["train"]
 test_dataset = val_test["test"]
-
-# Original student model: meta-llama/Llama-3.2-1B-Instruct
-
 
 lora_config = LoraConfig(
     r=16,
@@ -385,14 +467,7 @@ trainer = SFTTrainer(
     processing_class=student_tokenizer,
 )
 
-# trainer = SFTTrainer(
-#     model=student_model,
-#     args=sft_config,
-#     train_dataset=train_dataset,
-#     eval_dataset=val_dataset,
-#     processing_class=student_tokenizer,
-#     peft_config=lora_config,   # add this
-# )
+
 
 trainer.train()
 
@@ -400,6 +475,6 @@ trainer.train()
 # eval_metrics = trainer.evaluate(test_dataset)
 # print("Test metrics:", eval_metrics)
 
-trainer.save_model(os.path.join(sft_config.output_dir, "TestLLaMa-v1.0"))
-student_tokenizer.save_pretrained(os.path.join(sft_config.output_dir, "TestLLaMa-v1.0"))
+trainer.save_model(os.path.join(sft_config.output_dir, "TestLLaMa-v-SFT"))
+student_tokenizer.save_pretrained(os.path.join(sft_config.output_dir, "TestLLaMa-v-SFT"))
 

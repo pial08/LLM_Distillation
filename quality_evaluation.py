@@ -274,6 +274,11 @@ def evaluate_teacher_student(
     gemini_count = 0
 
     for i, sentence in enumerate(sentences):
+        if len(sentence.split(" ")) > 10:
+            length = int(len(sentence.split(" ")) * 30 / 100)
+            print("Length of 30 percent", length)
+            sentence = " ".join(sentence.split(" ")[:length])
+            print("Printing sentence ", sentence)
         inputs = tokenizer(sentence, return_tensors="pt").to(device)
 
         # Teacher prediction
@@ -408,8 +413,8 @@ def evaluate_and_save(student_model, teacher_model, tokenizer, device, result_di
             max_length=256,
             total_samples=100,
             wikitext_ratio=0.6,
-            seed=42,
-            split="validation",
+            #seed=42,
+            split="train",
         )
     #dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
     sentences = [s for s in dataset["text"] if len(s.strip()) > 20][:num_samples]
@@ -432,9 +437,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logging.info("Starting inference on GPU" if torch.cuda.is_available() else "Starting inference on CPU")
 result_dir = "eval_results"
 
+# saved_models/Uninitialized-Student-Test
+# saved_models/TestLLaMa-v1.0
 
-
-student_model_name = "saved_models/TestLLaMa-v1.0"
+student_model_name = "saved_models/TestLLaMa-v-SFT"
 #teacher_model_name = "meta-llama/Llama-3.1-8B-Instruct"
 
 teacher_model_name = config.get("teacher_model_name")

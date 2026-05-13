@@ -3,6 +3,7 @@ import time
 import threading
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any
+import json
 
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -17,6 +18,11 @@ USE_NVML = True
 if USE_NVML:
     import pynvml
 
+def load_config(config_path):
+    """Loads configuration parameters from a JSON file."""
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    return config
 
 @dataclass
 class PromptMetrics:
@@ -228,10 +234,22 @@ def summarize_results(results: List[PromptMetrics]) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    model_dir = "saved_models/TestLLaMa-v1.0"
-    model_dir = "meta-llama/Llama-3.1-8B"
+
+    config_path = "config.json"
+    config = load_config(config_path)
+
+    "meta-llama/Llama-Guard-3-1B"
+    teacher_model_name = config.get("teacher_model_name")
+    #saved_model_name = "saved_models/TestLLaMa-v1.0"
+
+    saved_model_name = "saved_models/TestLLaMa-v1.0"
+    #model_dir = "mistralai/Mistral-7B-Instruct-v0.3"
+
+
+    
 
     prompts = [
+        "This ammunition , and that which I brought with me , was rapidly prepared for use at the Laboratory", 
         "Partly due to these events , and partly due to the major losses in manpower Gallia suffers towards the end of the war with the Empire , the Nameless are offered a formal position as a squad in the Gallian Army rather than serve as an anonymous shadow force .",
         "In a preview of the TGS demo , Ryan Geddes of IGN was left excited as to where the game would go after completing the demo , along with enjoying the improved visuals over Valkyria Chronicles II",
         "Summarize the concept of knowledge distillation in LLMs.",
@@ -239,8 +257,11 @@ if __name__ == "__main__":
         "For several years the arsenal , which was owned by the federal government , served as a simple arms depot and was staffed with only a handful of soldiers . But in November 1860 , with the American Civil War on the horizon",
     ]
 
+
+    
+    print("Outupt for the base model ........", teacher_model_name)
     results = run_inference_with_metrics(
-        model_dir=model_dir,
+        model_dir=teacher_model_name,
         prompts=prompts,
         max_new_tokens=80,
         do_sample=False,   # use deterministic decoding for fair comparisons
@@ -258,3 +279,27 @@ if __name__ == "__main__":
     print("\nSummary:")
     for k, v in summary.items():
         print(f"{k}: {v}")
+
+
+
+    print("Outupt for the saved models ........", saved_model_name)
+    results = run_inference_with_metrics(
+        model_dir=saved_model_name,
+        prompts=prompts,
+        max_new_tokens=80,
+        do_sample=False,   # use deterministic decoding for fair comparisons
+        temperature=0.7,
+        top_p=0.9,
+        gpu_index=0,
+    )
+
+    print("\nPer-prompt results:")
+    for r in results:
+        print(asdict(r))
+        print("-" * 80)
+
+    summary = summarize_results(results)
+    print("\nSummary:")
+    for k, v in summary.items():
+        print(f"{k}: {v}")
+    

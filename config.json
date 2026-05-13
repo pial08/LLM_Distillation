@@ -21,11 +21,12 @@
         "llm_int8_threshold": 6.0,
         "llm_int8_enable_fp32_cpu_offload": false
     },
+    "num_samples": 1000,
     "max_length": 128,
-    "batch_size": 8,
-    "num_epochs": 20,
+    "batch_size": 2,
+    "num_epochs": 100,
     "learning_rate": 0.0001,
     "temperature": 2.0,
-    "student_layer_range": [1, 1]
+    "student_layer_range": [4, 4]
 }
 

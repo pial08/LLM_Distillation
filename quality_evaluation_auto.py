@@ -16,8 +16,9 @@ from sentence_transformers import SentenceTransformer, util
 from nltk.translate.bleu_score import sentence_bleu
 from rouge_score import rouge_scorer
 from sentence_transformers import SentenceTransformer, util
-from datasets import load_dataset
+from datasets import load_dataset, concatenate_datasets
 import pandas as pd
+import gc
 
 #  test on squad dataset, and wikitext dataset
 
@@ -69,35 +70,126 @@ def extract_json(text):
 
 
 
+def prepare_mixed_dataset(
+    tokenizer,
+    max_length=256,
+    total_samples=10000,
+    wikitext_ratio=0.5,
+    seed=42,
+    split="train",
+):
+    """
+    Load WikiText-2 and SQuAD, convert them to a common text format,
+    sample a user-defined amount, combine, shuffle, tokenize, and return.
+
+    Args:
+        tokenizer: Hugging Face tokenizer
+        max_length: max token length
+        total_samples: total number of examples in final mixed dataset
+        wikitext_ratio: fraction from WikiText; rest from SQuAD
+        seed: random seed
+        split: 'train' or 'validation'
+
+    Returns:
+        tokenized_dataset
+    """
+
+    print("Loading WikiText-2 and SQuAD...")
+
+    # 1) Load datasets
+    wikitext = load_dataset("wikitext", "wikitext-2-raw-v1", split=split)
+    squad = load_dataset("rajpurkar/squad", split=split)
+
+    # 2) Convert each to a common "text" field
+    # WikiText already has "text", but some rows are empty
+    wikitext = wikitext.filter(lambda x: x["text"] is not None and x["text"].strip() != "")
+    wikitext = wikitext.map(lambda x: {"text": x["text"]})
+
+    # Convert SQuAD row into a single text string
+    def squad_to_text(example):
+        answer_text = ""
+        if example["answers"]["text"]:
+            answer_text = example["answers"]["text"][0]
+
+        combined = (
+            f"Context: {example['context']}\n"
+            f"Question: {example['question']}\n"
+            f"Answer: {answer_text}"
+        )
+        return {"text": combined}
+
+    squad = squad.map(squad_to_text)
+
+    # Keep only the text column
+    wikitext = wikitext.remove_columns([c for c in wikitext.column_names if c != "text"])
+    squad = squad.remove_columns([c for c in squad.column_names if c != "text"])
+
+    # 3) Shuffle before sampling
+    wikitext = wikitext.shuffle(seed=seed)
+    squad = squad.shuffle(seed=seed)
+
+    # 4) Decide sample counts
+    num_wikitext = int(total_samples * wikitext_ratio)
+    num_squad = total_samples - num_wikitext
+
+    num_wikitext = min(num_wikitext, len(wikitext))
+    num_squad = min(num_squad, len(squad))
+
+    wikitext = wikitext.select(range(num_wikitext))
+    squad = squad.select(range(num_squad))
+
+    print(f"Selected {len(wikitext)} WikiText samples")
+    print(f"Selected {len(squad)} SQuAD samples")
+
+    # 5) Combine and reshuffle
+    combined = concatenate_datasets([wikitext, squad]).shuffle(seed=seed)
+    return combined
+
+    # 6) Tokenize
+    def tokenize_function(examples):
+        return tokenizer(
+            examples["text"],
+            truncation=True,
+            padding="max_length",
+            max_length=max_length,
+        )
+
+    tokenized_dataset = combined.map(tokenize_function, batched=True)
+    tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
+
+    return tokenized_dataset
+
+
+
 def build_judge_prompt(input_sentence, teacher_text, student_text):
     return f"""
-You are an expert evaluator for teacher-student knowledge distillation.
+        You are an expert evaluator for teacher-student knowledge distillation.
 
-Compare the student output against the teacher output for the same input. Use the below guidelines to judge the teacher output vs the student output.
-Be gentle with scoring, 
+        Compare the student output against the teacher output for the same input. Use the below guidelines to judge the teacher output vs the student output.
+        Be gentle with scoring, 
 
-Input sentence:
-{input_sentence}
+        Input sentence:
+        {input_sentence}
 
-Teacher output:
-{teacher_text}
+        Teacher output:
+        {teacher_text}
 
-Student output:
-{student_text}
+        Student output:
+        {student_text}
 
-Return JSON only with these fields:
-{{
-  "overall_score": number from 0 to 5
-}}
+        Return JSON only with these fields:
+        {{
+        "overall_score": number from 0 to 5
+        }}
 
-Scoring rules:
-5 = nearly identical or fully equivalent in meaning or token matching
-4 = mostly equivalent with minor differences
-3 = partially similar but missing/changing some meaning
-2 = weakly related
-1 = mostly unrelated
-0 = completely unrelated or empty
-"""
+        Scoring rules:
+        5 = nearly identical or fully equivalent in meaning or token matching
+        4 = mostly equivalent with minor differences
+        3 = partially similar but missing/changing some meaning
+        2 = weakly related
+        1 = mostly unrelated
+        0 = completely unrelated or empty
+    """
 
 def gpt_judge(input_sentence, teacher_text, student_text):
     #api_key = os.environ.get("OPENAI_API_KEY")
@@ -135,36 +227,6 @@ def gemini_judge(input_sentence, teacher_text, student_text):
 
     return extract_json(response.text)
 
-
-
-# def create_teacher_model(config: dict):
-#     teacher_model_name = config.get("teacher_model_name", "distilgpt2")
-#     qcfg = config.get("teacher_quantization", {})
-
-#     tokenizer = AutoTokenizer.from_pretrained(teacher_model_name)
-#     if tokenizer.pad_token is None:
-#         tokenizer.pad_token = tokenizer.eos_token
-
-#     quantization_config = build_bnb_config(qcfg)
-
-#     model_kwargs = {
-#         "pretrained_model_name_or_path": teacher_model_name,
-#     }
-
-#     if quantization_config is not None:
-#         model_kwargs["quantization_config"] = quantization_config
-#         model_kwargs["device_map"] = qcfg.get("device_map", "auto")
-#         dtype = qcfg.get("torch_dtype", "auto")
-#         model_kwargs["dtype"] = dtype  # transformers docs support dtype="auto"
-#     else:
-#         torch_dtype = get_torch_dtype(config.get("teacher_torch_dtype"))
-#         if torch_dtype is not None:
-#             model_kwargs["torch_dtype"] = torch_dtype
-
-#     teacher_model = AutoModelForCausalLM.from_pretrained(**model_kwargs)
-#     teacher_model.eval()
-
-#     return teacher_model, tokenizer
 
 def evaluate_teacher_student(
     sentences,
@@ -213,6 +275,11 @@ def evaluate_teacher_student(
     gemini_count = 0
 
     for i, sentence in enumerate(sentences):
+        if len(sentence.split(" ")) > 10:
+            length = int(len(sentence.split(" ")) * 30 / 100)
+            #print("Length of 30 percent", length)
+            sentence = " ".join(sentence.split(" ")[:length])
+            #print("Printing sentence ", sentence)
         inputs = tokenizer(sentence, return_tensors="pt").to(device)
 
         # Teacher prediction
@@ -292,22 +359,22 @@ def evaluate_teacher_student(
         })
 
         # Print for inspection
-        print(f"\nSample {i+1}:")
-        print("Input:", sentence)
-        print("Teacher (ground truth):", teacher_text)
-        print("Student (predicted)  :", student_text)
+        # print(f"\nSample {i+1}:")
+        # print("Input:", sentence)
+        # print("Teacher (ground truth):", teacher_text)
+        # print("Student (predicted)  :", student_text)
         #print(f"BLEU: {bleu_score:.4f}, ROUGE-L: {rouge_score:.4f}, CosineSim: {cosine_sim:.4f}, BERTScore_F1: {bert_score_f1:.4f}, GPT Score: {gpt_score:.4f}, GEMINI Score: {gemini_score:.4f}")
-        print(f"BLEU: {bleu_score:.4f}, ROUGE-L: {rouge_score:.4f}, CosineSim: {cosine_sim:.4f}, BERTScore_F1: {bert_score_f1:.4f}")
+        # print(f"BLEU: {bleu_score:.4f}, ROUGE-L: {rouge_score:.4f}, CosineSim: {cosine_sim:.4f}, BERTScore_F1: {bert_score_f1:.4f}")
 
-        if gpt_score is not None:
-            print(f"GPT Judge Score: {gpt_score:.2f}/5")
-        else:
-            print("GPT Judge Score: skipped or failed")
+        # if gpt_score is not None:
+        #     print(f"GPT Judge Score: {gpt_score:.2f}/5")
+        # else:
+        #     print("GPT Judge Score: skipped or failed")
 
-        if gemini_score is not None:
-            print(f"Gemini Judge Score: {gemini_score:.2f}/5")
-        else:
-            print("Gemini Judge Score: skipped or failed")
+        # if gemini_score is not None:
+        #     print(f"Gemini Judge Score: {gemini_score:.2f}/5")
+        # else:
+        #     print("Gemini Judge Score: skipped or failed")
 
     num_samples = len(results)
     avg_metrics = {
@@ -340,11 +407,17 @@ def evaluate_and_save(student_model, teacher_model, tokenizer, device, result_di
     Helper to automatically run evaluation on WikiText samples for a student model
     and save results to CSV.
     """
-    """
-    Should be changed to test
-    """
     # Take first N non-empty sentences from WikiText train split
-    dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
+
+    dataset = prepare_mixed_dataset(
+            tokenizer=tokenizer,
+            max_length=256,
+            total_samples=100,
+            wikitext_ratio=0.6,
+            seed=42,
+            split="validation",
+        )
+    #dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
     sentences = [s for s in dataset["text"] if len(s.strip()) > 20][:num_samples]
 
     print(f"\n=== Evaluating Student Model")
@@ -357,42 +430,62 @@ def evaluate_and_save(student_model, teacher_model, tokenizer, device, result_di
     print(f"Evaluation CSV saved to {csv_file}")
 
 
+
+config_path = "config.json"
+config = load_config(config_path)
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logging.info("Starting inference on GPU" if torch.cuda.is_available() else "Starting inference on CPU")
 result_dir = "eval_results"
 
-
-student_model_name = "saved_models/TestLLaMa-v1.0"
-teacher_model_name = "meta-llama/Llama-3.1-8B-Instruct"
-
-# ./gkd_out/RL_Distil_1.2
-# saved_models/student_model_student_layers
-# saved_models/TestLLaMa-v1.0
-
-
-student_model = AutoModelForCausalLM.from_pretrained(student_model_name).to(device)
-
-
-
 #original teacher model leading
+teacher_model_name = config.get("teacher_model_name")
 teacher_model = AutoModelForCausalLM.from_pretrained(teacher_model_name).to(device)
 tokenizer = AutoTokenizer.from_pretrained(teacher_model_name)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 teacher_model.eval()
 
+# saved_models/Uninitialized-Student-Test
+# saved_models/TestLLaMa-v1.0
+for i in range(1, 6):
+    student_model_name = "saved_models/TestLLaMa-v1.0-" + str(i)
 
-# # Load teacher using funciton
-# # Load configuration
-# config_path = "config.json"
-# config = load_config(config_path)
-
-# # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# # logging.info("Starting training on GPU" if torch.cuda.is_available() else "Starting training on CPU")
-
-# # Load teacher model and tokenizer (original) -- commenting temp
-# teacher_model_name = config.get("teacher_model_name", "distilgpt2")
-# teacher_model, tokenizer = create_teacher_model(config)
+    print("Printing Teacher and Student Model name", teacher_model_name, student_model_name)
 
 
-evaluate_and_save(student_model, teacher_model, tokenizer, device, result_dir, num_samples=50)
+    # ./gkd_out/RL_Distil_1.2
+    # saved_models/student_model_student_layers
+    # saved_models/TestLLaMa-v1.0
+
+
+    student_model = AutoModelForCausalLM.from_pretrained(student_model_name).to(device)
+
+
+
+    
+
+
+    # # Load teacher using funciton
+    # # Load configuration
+    # config_path = "config.json"
+    # config = load_config(config_path)
+
+    # # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # # logging.info("Starting training on GPU" if torch.cuda.is_available() else "Starting training on CPU")
+
+    # # Load teacher model and tokenizer (original) -- commenting temp
+    # teacher_model_name = config.get("teacher_model_name", "distilgpt2")
+    # teacher_model, tokenizer = create_teacher_model(config)
+
+
+    evaluate_and_save(student_model, teacher_model, tokenizer, device, result_dir, num_samples=25)
+
+    # Clean up model from memory
+    del student_model
+
+    gc.collect()
+    #del tokenizer
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()

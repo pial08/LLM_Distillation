@@ -1,7 +1,16 @@
-meta-llama/Meta-Llama-3-8B-Instruct (Done)
-meta-llama/Llama-3.1-8B
+Need to run again
+meta-llama/Meta-Llama-3-8B-Instruct (Done) (1.9, 8)
+meta-llama/Llama-3.1-8B (done) (1.2, 8B)
+mistralai/Mistral-7B-v0.3. (0,48, 7.2) ~ Done
+mistralai/Mistral-7B-Instruct-v0.3 (0,48, 7.2) ~ Done
+
+## Results correctly measured
+Qwen/Qwen2.5-7B-Instruct (1.3, 7.6) Done
+Qwen/Qwen2.5-7B (1.3, 7.6) done
 
 
+google/gemma-7b-it. (1.05, 8.5) Done
+google/gemma-7b (1.05, 8.5) Done
 
 
 
@@ -18,3 +27,56 @@ A.
 BLEU: 0.9766, ROUGE-L: 0.9946, CosineSim: 0.9973, BERTScore_F1: 0.9922
 GPT Judge Score: 4.00/5
 Gemini Judge Score: 4.00/5
+
+
+After trimming the sentence at 30% at input for evaluation
+
+Sample 2:
+Input:  In January 1287 , the embassy arrived at Beijing , and was received by the Yuan emperor . The Burmese delegation formally acknowledged Mongol suzerainty of their kingdom , and agreed to pay annual tribute tied to the
+Teacher (ground truth):  In January 1287 , the embassy arrived at Beijing , and was received by the Yuan emperor . The Burmese delegation formally acknowledged Mongol suzerainty of their kingdom , and agreed to pay annual tribute tied to the size of their harvest .
+Answer this question: Which happened first, the embassy arriving in Beijing or the Burmese acknowledging Mongol suzerainty? Based on the information provided in the given text, the embassy arrived in Beijing first, followed by the
+Student (predicted)  :  In January 1287 , the embassy arrived at Beijing , and was received by the Yuan emperor . The Burmese delegation formally acknowledged Mongol suzerainty of their kingdom , and agreed to pay annual tribute tied to the1000 to 2011 . The first of the 1500 - 1600 , and the 1600s , which was the first to be the first and was in 12
+BLEU: 0.4778, ROUGE-L: 0.6154, CosineSim: 0.8945, BERTScore_F1: 0.9071
+GPT Judge Score: 3.00/5
+Gemini Judge Score: 1.00/5
+Setting `pad_token_id` to `eos_token_id`:151645 for open-end generation.
+
+
+LlamaForCausalLM(
+  (model): LlamaModel(
+    (embed_tokens): Embedding(256000, 3072, padding_idx=0)
+    (layers): ModuleList(
+      (0): LlamaDecoderLayer(
+        (self_attn): LlamaAttention(
+          (q_proj): Linear(in_features=3072, out_features=3072, bias=False)
+          (k_proj): Linear(in_features=3072, out_features=3072, bias=False)
+          (v_proj): Linear(in_features=3072, out_features=3072, bias=False)
+          (o_proj): Linear(in_features=3072, out_features=3072, bias=False)
+        )
+        (mlp): LlamaMLP(
+          (gate_proj): Linear(in_features=3072, out_features=24576, bias=False)
+          (up_proj): Linear(in_features=3072, out_features=24576, bias=False)
+          (down_proj): Linear(in_features=24576, out_features=3072, bias=False)
+          (act_fn): SiLUActivation()
+        )
+        (input_layernorm): LlamaRMSNorm((3072,), eps=1e-06)
+        (post_attention_layernorm): LlamaRMSNorm((3072,), eps=1e-06)
+      )
+    )
+    (norm): LlamaRMSNorm((3072,), eps=1e-06)
+    (rotary_emb): LlamaRotaryEmbedding()
+  )
+  (lm_head): Linear(in_features=3072, out_features=256000, bias=False)
+)
+
+
+Input: Context: Slow progress has led to frustration, expressed by executive director of the Global Fund to Fight AIDS, Tuberculosis and Malaria – Mark Dybul: "we have the tools to end TB as a pandemic and public health threat on the planet, but we are not doing it." Several international organizations are pushing for more transparency in treatment, and more countries
+Teacher (ground truth): Context: Slow progress has led to frustration, expressed by executive director of the Global Fund to Fight AIDS, Tuberculosis and Malaria – Mark Dybul: "we have the tools to end TB as a pandemic and public health threat on the planet, but we are not doing it." Several international organizations are pushing for more transparency in treatment, and more countries are committing to the fight against TB.
+In 2014, 1.5 million people died of tuberculosis (TB), a disease that is curable and preventable. The World Health Organization (WHO) estimates that 9 million people contracted TB
+Student (predicted)  : Context: Slow progress has led to frustration, expressed by executive director of the Global Fund to Fight AIDS, Tuberculosis and Malaria – Mark Dybul: "we have the tools to end TB as a pandemic and public health threat on the planet, but we are not doing it." Several international organizations are pushing for more transparency in treatment, and more countries The The The The The The The The The The The The The The The The The The
+BLEU: 0.6175, ROUGE-L: 0.7093, CosineSim: 0.5790, BERTScore_F1: 0.9301
+GPT Judge Score: 3.00/5
+Gemini Judge Score: 1.00/5
+Length of 30 percent 20
+Printing sentence   Syādvāda , the doctrine of conditional predications , and kevalajñāna ( omniscience ) , are both illuminators of the
+Setting `pad_token_id` to `eos_token_id`:128001 for open-end generation.

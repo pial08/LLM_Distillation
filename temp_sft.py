@@ -214,7 +214,7 @@ def prepare_dataset_HF(tokenizer, max_length):
     dataset = load_dataset(
         "wikitext",
         "wikitext-2-raw-v1",
-        split="train[:5000]"
+        split="train[:100]"
     )
     
     def tokenize_function(examples):
@@ -277,6 +277,7 @@ def prepare_dataset_local(tokenizer, max_length):
 
 def create_teacher_model(config: dict, device):
     teacher_model_name = config.get("teacher_model_name", "distilgpt2")
+    print("Creating teacher model ", teacher_model_name)
     if config.get("quantization"):
         print("Quantization is True")
         if config.get("quantizatio_bit") == 4:
@@ -319,7 +320,128 @@ def create_teacher_model(config: dict, device):
 
     return teacher_model, tokenizer
 
-def create_student_model(teacher_model, tokenizer, student_layers: int, max_positions: int = 2048):
+def create_student_model(
+    teacher_model,
+    tokenizer,
+    student_layers: int,
+    max_positions: int = 2048,
+):
+    """
+    Initialize a LLaMA-style student model using the teacher's width/head settings
+    but with fewer transformer layers.
+
+    Fixes:
+    - uses teacher embedding vocab size instead of len(tokenizer)
+    - uses generic HF embedding/output accessors
+    - safely copies weights only when shapes match
+    - freezes copied embedding and lm_head layers
+    """
+    print("Creating Student Model ...")
+    teacher_config = teacher_model.config
+
+    # Use actual teacher embedding size, not len(tokenizer),
+    # because tokenizer length and embedding rows may differ.
+    teacher_input_emb = teacher_model.get_input_embeddings()
+    teacher_output_emb = teacher_model.get_output_embeddings()
+
+    teacher_vocab_size = teacher_input_emb.weight.shape[0]
+    teacher_hidden_size = teacher_input_emb.weight.shape[1]
+
+    # Build student config
+    student_config = LlamaConfig(
+        vocab_size=teacher_vocab_size,
+        hidden_size=teacher_hidden_size,
+        intermediate_size=teacher_config.intermediate_size,
+        num_hidden_layers=student_layers,
+        num_attention_heads=teacher_config.num_attention_heads,
+        num_key_value_heads=getattr(
+            teacher_config,
+            "num_key_value_heads",
+            teacher_config.num_attention_heads,
+        ),
+        max_position_embeddings=getattr(
+            teacher_config,
+            "max_position_embeddings",
+            max_positions,
+        ),
+        rms_norm_eps=getattr(teacher_config, "rms_norm_eps", 1e-5),
+        rope_theta=getattr(teacher_config, "rope_theta", 10000.0),
+        rope_scaling=getattr(teacher_config, "rope_scaling", None),
+        bos_token_id=getattr(teacher_config, "bos_token_id", None),
+        eos_token_id=getattr(teacher_config, "eos_token_id", None),
+        pad_token_id=getattr(teacher_config, "pad_token_id", tokenizer.pad_token_id),
+        tie_word_embeddings=getattr(teacher_config, "tie_word_embeddings", False),
+    )
+
+    student_model = LlamaForCausalLM(student_config)
+
+    # Print parameter counts
+    teacher_n_params = sum(p.numel() for p in teacher_model.parameters())
+    student_n_params = sum(p.numel() for p in student_model.parameters())
+
+    print(teacher_model)
+    print("Teacher model parameters --> billions:", teacher_n_params / 1e9)
+    print("-----------------------------------------------")
+    print(student_model)
+    print("Student model parameters --> billions:", student_n_params / 1e9)
+
+    # Student embedding/output layers
+    student_input_emb = student_model.get_input_embeddings()
+    student_output_emb = student_model.get_output_embeddings()
+
+    with torch.no_grad():
+        # Copy token embeddings if shapes match
+        if student_input_emb.weight.shape == teacher_input_emb.weight.shape:
+            student_input_emb.weight.copy_(teacher_input_emb.weight)
+            print("Copied input embedding weights.")
+        else:
+            print(
+                f"Skipping input embedding copy: "
+                f"student {tuple(student_input_emb.weight.shape)} vs "
+                f"teacher {tuple(teacher_input_emb.weight.shape)}"
+            )
+
+        # Copy lm_head / output embeddings if shapes match
+        if (
+            teacher_output_emb is not None
+            and student_output_emb is not None
+            and student_output_emb.weight.shape == teacher_output_emb.weight.shape
+        ):
+            student_output_emb.weight.copy_(teacher_output_emb.weight)
+            print("Copied LM head weights.")
+        else:
+            print(
+                "Skipping LM head copy: incompatible or missing output embedding shapes."
+            )
+
+        # Copy lm_head bias if both exist and shapes match
+        student_bias = getattr(student_output_emb, "bias", None)
+        teacher_bias = getattr(teacher_output_emb, "bias", None)
+        if (
+            student_bias is not None
+            and teacher_bias is not None
+            and student_bias.shape == teacher_bias.shape
+        ):
+            student_bias.copy_(teacher_bias)
+            print("Copied LM head bias.")
+
+    # Freeze copied embedding layer
+    for param in student_input_emb.parameters():
+        param.requires_grad = False
+
+    # Freeze copied output layer
+    if student_output_emb is not None:
+        for param in student_output_emb.parameters():
+            param.requires_grad = False
+
+    save_dir = "saved_models/Uninitialized-Student-Test"
+    student_model.save_pretrained(save_dir)
+    tokenizer.save_pretrained(save_dir)
+    print("Temp model saved .....")
+    
+    return student_model
+
+def create_student_model_LLaMa(teacher_model, tokenizer, student_layers: int, max_positions: int = 2048):
     """
     Initializes a LLaMA-style student model with a given number of transformer blocks.
     Copies the token embeddings and final linear layer weights from the teacher,
@@ -375,6 +497,11 @@ def create_student_model(teacher_model, tokenizer, student_layers: int, max_posi
     for param in student_model.lm_head.parameters():
         param.requires_grad = False
 
+    # save_dir = "saved_models/Uninitialized-Student-Test"
+    # student_model.save_pretrained(save_dir)
+    # tokenizer.save_pretrained(save_dir)
+    # print("Temp model saved .....")
+
     return student_model
 
 def train_student_model(student_model, teacher_model, dataloader, device, optimizer, num_epochs, temperature, tokenizer):
@@ -416,7 +543,8 @@ def train_student_model(student_model, teacher_model, dataloader, device, optimi
                 ignore_index=tokenizer.pad_token_id
             )
             # Backpropagate using the distillation loss (you can combine losses if desired)
-            loss = loss_distill
+            lambda_ce = 0.2
+            loss = (1 - lambda_ce) * loss_distill + lambda_ce * loss_ce
             loss.backward()
             optimizer.step()
             total_distill += loss_distill.item()
@@ -527,6 +655,7 @@ def main():
 
     # Prepare dataset and dataloader (same for all experiments)
     max_length = config.get("max_length", 128)
+    num_samples = config.get("num_samples", 1000)
     
     if config.get("local_dataset"):
         tokenized_dataset = prepare_dataset_local(tokenizer, max_length)
@@ -535,8 +664,8 @@ def main():
         tokenized_dataset = prepare_mixed_dataset(
             tokenizer=tokenizer,
             max_length=256,
-            total_samples=2000,
-            wikitext_ratio=0.6,
+            total_samples=num_samples,
+            wikitext_ratio=0.9,
             seed=42,
             split="train",
         )

@@ -45,6 +45,7 @@ from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, GPT2LMHeadModel
 from transformers import LlamaConfig, LlamaForCausalLM
 from datasets import load_from_disk, concatenate_datasets
+import gc        
 
 
 
@@ -214,7 +215,7 @@ def prepare_dataset_HF(tokenizer, max_length):
     dataset = load_dataset(
         "wikitext",
         "wikitext-2-raw-v1",
-        split="train[:100]"
+        split="train[:5000]"
     )
     
     def tokenize_function(examples):
@@ -543,8 +544,7 @@ def train_student_model(student_model, teacher_model, dataloader, device, optimi
                 ignore_index=tokenizer.pad_token_id
             )
             # Backpropagate using the distillation loss (you can combine losses if desired)
-            lambda_ce = 0.1
-            loss = (1 - lambda_ce) * loss_distill + lambda_ce * loss_ce
+            loss = loss_distill
             loss.backward()
             optimizer.step()
             total_distill += loss_distill.item()
@@ -655,7 +655,6 @@ def main():
 
     # Prepare dataset and dataloader (same for all experiments)
     max_length = config.get("max_length", 128)
-    num_samples = config.get("num_samples", 1000)
     
     if config.get("local_dataset"):
         tokenized_dataset = prepare_dataset_local(tokenizer, max_length)
@@ -664,8 +663,8 @@ def main():
         tokenized_dataset = prepare_mixed_dataset(
             tokenizer=tokenizer,
             max_length=256,
-            total_samples=num_samples,
-            wikitext_ratio=0.9,
+            total_samples=1000,
+            wikitext_ratio=0.6,
             seed=42,
             split="train",
         )
@@ -697,9 +696,18 @@ def main():
         
         # Saving the model
         #save_dir = "saved_models/student_model_" + "student_layers"
-        save_dir = "saved_models/TestLLaMa-v1.0"
+        save_dir = "saved_models/TestLLaMa-v1.0-" + str(student_layers)
         student_model.save_pretrained(save_dir)
         tokenizer.save_pretrained(save_dir)
+
+        # Clean up model from memory
+        del student_model
+
+        gc.collect()
+        #del tokenizer
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
     
     # Generate and save plots
     logging.info("Generating plots for accumulated losses and training times.")
