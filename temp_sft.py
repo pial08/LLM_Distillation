@@ -494,6 +494,7 @@ def create_student_model_LLaMa(teacher_model, tokenizer, student_layers: int, ma
     # Freeze the embedding and final linear layer
     for param in student_model.model.embed_tokens.parameters():
         param.requires_grad = False
+    # Projection layer made true for testing
     for param in student_model.lm_head.parameters():
         param.requires_grad = False
 
@@ -503,6 +504,114 @@ def create_student_model_LLaMa(teacher_model, tokenizer, student_layers: int, ma
     # print("Temp model saved .....")
 
     return student_model
+
+def train_student_model_updated(student_model, teacher_model, dataloader, device, optimizer, num_epochs, temperature, tokenizer):
+    steps = []
+    distill_losses = []
+    ce_losses = []
+    total_losses = []
+    epoch_times = []
+
+    student_model.train()
+    teacher_model.eval()
+    global_step = 0
+
+    for epoch in range(num_epochs):
+        start_time = time.time()
+        total_distill = 0.0
+        total_ce = 0.0
+        total_combined = 0.0
+        step_count = 0
+
+        for batch in dataloader:
+            batch = {k: v.to(device) for k, v in batch.items()}
+            optimizer.zero_grad()
+
+            with torch.no_grad():
+                teacher_outputs = teacher_model(**batch)
+            student_outputs = student_model(**batch)
+
+            teacher_logits = teacher_outputs.logits
+            student_logits = student_outputs.logits
+
+            # Shift for causal next-token prediction
+            teacher_logits = teacher_logits[:, :-1, :].contiguous()
+            student_logits = student_logits[:, :-1, :].contiguous()
+            labels = batch["input_ids"][:, 1:].contiguous()
+
+            # Build mask to ignore padding
+            valid_mask = labels.ne(tokenizer.pad_token_id)
+
+            # KL distillation loss
+            teacher_probs = F.softmax(teacher_logits / temperature, dim=-1)
+            student_log_probs = F.log_softmax(student_logits / temperature, dim=-1)
+
+            # Token-level KL, then mask padded positions
+            kl_per_token = F.kl_div(
+                student_log_probs,
+                teacher_probs,
+                reduction="none"
+            ).sum(dim=-1)
+
+            loss_distill = (kl_per_token * valid_mask).sum() / valid_mask.sum().clamp_min(1)
+            loss_distill = loss_distill * (temperature ** 2)
+
+            # Standard CE loss
+            loss_ce = F.cross_entropy(
+                student_logits.view(-1, student_logits.size(-1)),
+                labels.view(-1),
+                ignore_index=tokenizer.pad_token_id
+            )
+
+            # Combine losses
+            lambda_ce = 0.2
+            loss = (1 - lambda_ce) * loss_distill + lambda_ce * loss_ce
+
+            loss.backward()
+            optimizer.step()
+
+            total_distill += loss_distill.item()
+            total_ce += loss_ce.item()
+            total_combined += loss.item()
+
+            global_step += 1
+            step_count += 1
+
+            steps.append(global_step)
+            distill_losses.append(loss_distill.item())
+            ce_losses.append(loss_ce.item())
+            total_losses.append(loss.item())
+
+            if global_step % 100 == 0:
+                logging.info(
+                    f"Epoch {epoch+1}/{num_epochs}, "
+                    f"Global Step {global_step}, "
+                    f"Distill Loss: {loss_distill.item():.4f}, "
+                    f"CE Loss: {loss_ce.item():.4f}, "
+                    f"Total Loss: {loss.item():.4f}"
+                )
+
+        epoch_time = time.time() - start_time
+        epoch_times.append(epoch_time)
+
+        avg_distill = total_distill / step_count if step_count > 0 else 0
+        avg_ce = total_ce / step_count if step_count > 0 else 0
+        avg_total = total_combined / step_count if step_count > 0 else 0
+
+        logging.info(
+            f"Epoch {epoch+1}/{num_epochs} completed in {epoch_time:.2f} sec | "
+            f"Avg Distill Loss: {avg_distill:.4f} | "
+            f"Avg CE Loss: {avg_ce:.4f} | "
+            f"Avg Total Loss: {avg_total:.4f}"
+        )
+
+    return {
+        "steps": steps,
+        "distill_losses": distill_losses,
+        "ce_losses": ce_losses,
+        "total_losses": total_losses,
+        "epoch_times": epoch_times
+    }
 
 def train_student_model(student_model, teacher_model, dataloader, device, optimizer, num_epochs, temperature, tokenizer):
     """
@@ -663,7 +772,7 @@ def main():
         #tokenized_dataset = prepare_dataset_HF(tokenizer, max_length)
         tokenized_dataset = prepare_mixed_dataset(
             tokenizer=tokenizer,
-            max_length=256,
+            max_length=128,
             total_samples=num_samples,
             wikitext_ratio=0.9,
             seed=42,
@@ -687,7 +796,7 @@ def main():
         logging.info(f"----- Training Student Model with {student_layers} Transformer Blocks -----")
         student_model = create_student_model(teacher_model, tokenizer, student_layers).to(device)
         optimizer = Adam(student_model.parameters(), lr=learning_rate)
-        loss_dict = train_student_model(student_model, teacher_model, dataloader, device, optimizer, num_epochs, temperature, tokenizer)
+        loss_dict = train_student_model_updated(student_model, teacher_model, dataloader, device, optimizer, num_epochs, temperature, tokenizer)
         results_dict[student_layers] = loss_dict
         epoch_time_dict[student_layers] = loss_dict["epoch_times"]
         # Save step-wise loss to CSV (file will be named by student layer)

@@ -27,6 +27,6 @@
     "num_epochs": 100,
     "learning_rate": 0.0001,
     "temperature": 2.0,
-    "student_layer_range": [4, 4]
+    "student_layer_range": [3, 3]
 }
 

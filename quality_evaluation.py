@@ -410,10 +410,10 @@ def evaluate_and_save(student_model, teacher_model, tokenizer, device, result_di
 
     dataset = prepare_mixed_dataset(
             tokenizer=tokenizer,
-            max_length=256,
+            max_length=128,
             total_samples=100,
             wikitext_ratio=0.6,
-            #seed=42,
+            seed=42,
             split="train",
         )
     #dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
